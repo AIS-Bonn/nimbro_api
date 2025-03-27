@@ -1,0 +1,4 @@
+requests  # (required) used for all API interactions
+unidecode # (optional) improves unicode removal/replacement when normalizing comletions
+tiktoken  # (optional) allows embeddings node to count tokens for monitoring usage/pricing
+orjson    # (optional) speeds up json file handling

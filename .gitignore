@@ -1,0 +1,7 @@
+cache
+.directory
+*.pyc
+*-checkpoint.ipynb
+*-checkpoint.txt
+debug.ipynb
+.vscode/*
