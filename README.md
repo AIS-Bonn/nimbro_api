@@ -71,6 +71,8 @@ Here is a list of features that I would like to implement at some point:
 - [ ] Web search options for Completions
 - [ ] Action client for streamed Completions
 - [ ] ApiDirector documentation
+- [ ] Allow overwriting context messages
+- [ ] Allow number of parallel completions beyond number of CPU cores
 
 ## Citation
 
