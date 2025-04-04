@@ -404,6 +404,8 @@ class Completions(Node):
                 else:
                     success = False
                     reason = f"Model '{parameter.value}' is not in list of available models {self.endpoint_probes[self.api_endpoint]['models']}."
+            else:
+                self.model_name = parameter.value
 
         elif parameter.name == "model_temperatur":
             self.model_temperatur = parameter.value
