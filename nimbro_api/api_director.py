@@ -165,7 +165,7 @@ class ApiDirector:
             # wait until thread previous is done
             while 'response' not in self._async_responses[self._async_responses[async_id]['succeed_async_id']]:
                 self._logger.info(f"[{self._async_responses[async_id]['completions_id']}] Asynchronous thread '{async_id}' waiting for termination of previous asynchronous thread '{self._async_responses[async_id]['succeed_async_id']}'.", throttle_duration_sec=1.0, skip_first=True)
-                time.sleep(0.1)
+                time.sleep(0.01)
             # if previous thread failed, cancel this thread
             if self._async_responses[self._async_responses[async_id]['succeed_async_id']]['response'][0] is False:
                 cancel = True
@@ -183,8 +183,10 @@ class ApiDirector:
                 self._logger.info(f"[{self._async_responses[async_id]['completions_id']}] Asynchronous thread '{async_id}' started after waiting '{time_waited:.3f}s'.")
             if self._async_responses[async_id]['type'] == "prompt":
                 self._async_responses[async_id]['response'] = self.prompt(*args)
-            else:
+            elif self._async_responses[async_id]['type'] == "tools":
                 self._async_responses[async_id]['response'] = self.set_tools(*args)
+            else:
+                self._async_responses[async_id]['response'] = self.set_parameters(*args)
 
             self._async_responses[async_id]['terminated'] = self._node.get_clock().now()
             time_waited = (self._async_responses[async_id]['terminated'] - self._async_responses[async_id]['started']).nanoseconds / 1e9
@@ -395,9 +397,56 @@ class ApiDirector:
 
     # Model Parameters
 
+    def async_set_parameters(self, completions_id, parameter_names=[], parameter_values=[], retry=False, succeed_async_id=None):
+        if not isinstance(completions_id, str):
+            return self._log_return(None, False, f"Provided argument 'completions_id' is of invalid type '{type(completions_id).__name__}'. Supported type is 'str'.", None)
+
+        if isinstance(parameter_names, str):
+            parameter_names = [parameter_names]
+        elif isinstance(parameter_names, list):
+            for i in range(len(parameter_names)):
+                if not isinstance(parameter_names[i], str):
+                    return self._log_return(completions_id, False, f"Provided argument 'parameter_names' contains element of invalid type '{type(parameter_names[i]).__name__}'. Supported type is 'str'.", None)
+        else:
+            return self._log_return(completions_id, False, f"Provided argument 'parameter_names' is of invalid type '{type(parameter_names).__name__}'. Supported types are 'str' and 'list'.", None)
+
+        if isinstance(parameter_values, str):
+            parameter_values = [parameter_values]
+        elif isinstance(parameter_values, list):
+            for i in range(len(parameter_values)):
+                if not isinstance(parameter_values[i], str):
+                    return self._log_return(completions_id, False, f"Provided argument 'parameter_values' contains element of invalid type '{type(parameter_values[i]).__name__}'. Supported type is 'str' (values will be converted from string as required by the parameter).", None)
+        else:
+            return self._log_return(completions_id, False, f"Provided argument 'parameter_values' is of invalid type '{type(parameter_values).__name__}'. Supported types are 'str' (value will be converted from string as required by the parameter) and 'list'.", None)
+
+        if not len(parameter_values) == len(parameter_values):
+            return self._log_return(completions_id, False, f"The number of provided 'parameter_names' ({len(parameter_names)}) and 'parameter_values' ({len(parameter_values)}) do not match.", None)
+
+        if not isinstance(retry, bool):
+            return self._log_return(completions_id, False, f"Provided argument 'retry' is of invalid type '{type(retry).__name__}'. Supported type is 'bool'.", None)
+
+        if not (succeed_async_id is None or isinstance(succeed_async_id, str)):
+            return self._log_return(completions_id, False, f"Provided argument 'succeed_async_id' is of invalid type '{type(succeed_async_id).__name__}'. Supported types are 'None' and 'str'.", None)
+        if succeed_async_id is not None and len(self._async_responses) == 0:
+            return self._log_return(completions_id, False, f"Provided argument 'succeed_async_id' with invalid value '{succeed_async_id}'. Valid value is 'None'.", None)
+        if succeed_async_id is not None and succeed_async_id not in self._async_responses.keys():
+            return self._log_return(completions_id, False, f"Provided argument 'succeed_async_id' with invalid value '{succeed_async_id}'. Valid values are 'None' and elements of {list(self._async_responses.keys())}.", None)
+
+        async_id = self._get_async_id(completions_id)
+
+        self._async_responses[async_id] = {}
+        self._async_responses[async_id]['type'] = "parameters"
+        self._async_responses[async_id]['completions_id'] = completions_id
+        self._async_responses[async_id]['succeed_async_id'] = succeed_async_id
+        self._async_responses[async_id]['registered'] = self._node.get_clock().now()
+        self._async_responses[async_id]['thread'] = threading.Thread(target=self._async_thread, args=(async_id, (completions_id, parameter_names, parameter_values, retry)))
+        self._async_responses[async_id]['thread'].start()
+
+        return self._log_return(completions_id, True, f"Registered asynchronous thread '{async_id}'.", async_id)
+
     def set_parameters(self, completions_id, parameter_names=[], parameter_values=[], retry=False):
-        # parameter_names: [logger_level, probe_api_connection, api_flavor, model_name, model_temperatur, model_top_p, model_max_tokens, model_presence_penalty, model_frequency_penalty,
-        #                   normalize_text_response, max_tool_calls_per_response, correction_attempts, timeout_chunk, timeout_completion]
+        # parameter_names: [logger_level, probe_api_connection, api_endpoint, model_name, model_temperatur, model_top_p, model_max_tokens, model_presence_penalty, model_frequency_penalty
+        #                   stream_completion, normalize_text_response, max_tool_calls_per_response, correction_attempts, timeout_chunk, timeout_completion]
 
         if not isinstance(completions_id, str):
             return self._log_return(None, False, f"Provided argument 'completions_id' is of invalid type '{type(completions_id).__name__}'. Supported type is 'str'.")
