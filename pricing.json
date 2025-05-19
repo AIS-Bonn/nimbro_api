@@ -1,0 +1,277 @@
+{
+    "text-embedding-3-small": {
+        "tokens_input_uncached": 0.02
+    },
+    "text-embedding-3-large": {
+        "tokens_input_uncached": 0.13
+    },
+    "text-embedding-ada-002": {
+        "tokens_input_uncached": 0.1
+    },
+    "mistral-embed": {
+        "tokens_input_uncached": 0.1
+    },
+    "gpt-4-1106-preview": {
+        "tokens_input_uncached": 10.0,
+        "tokens_output": 30.0
+    },
+    "gpt-4o-2024-11-20": {
+        "tokens_input_uncached": 2.5,
+        "tokens_input_cached": 1.25,
+        "tokens_output": 1.25
+    },
+    "o1-mini": {
+        "tokens_input_uncached": 3.0,
+        "tokens_input_cached": 1.5,
+        "tokens_output": 12.0
+    },
+    "o1-mini-2024-09-12": {
+        "tokens_input_uncached": 3.0,
+        "tokens_input_cached": 1.5,
+        "tokens_output": 12.0
+    },
+    "o1-preview": {
+        "tokens_input_uncached": 15.0,
+        "tokens_input_cached": 7.5,
+        "tokens_output": 60.0
+    },
+    "gpt-3.5-turbo-16k": {
+        "tokens_input_uncached": 3.0,
+        "tokens_output": 4.0
+    },
+    "o1-preview-2024-09-12": {
+        "tokens_input_uncached": 15.0,
+        "tokens_input_cached": 7.5,
+        "tokens_output": 60.0
+    },
+    "gpt-4-0125-preview": {
+        "tokens_input_uncached": 10.0,
+        "tokens_output": 30.0
+    },
+    "gpt-4": {
+        "tokens_input_uncached": 30.0,
+        "tokens_output": 60.0
+    },
+    "gpt-4o-mini": {
+        "tokens_input_uncached": 0.15,
+        "tokens_input_cached": 0.075,
+        "tokens_output": 0.6
+    },
+    "gpt-4o-mini-2024-07-18": {
+        "tokens_input_uncached": 0.15,
+        "tokens_input_cached": 0.075,
+        "tokens_output": 0.6
+    },
+    "gpt-3.5-turbo": {
+        "tokens_input_uncached": 0.5,
+        "tokens_input_cached": 1.5
+    },
+    "gpt-3.5-turbo-0125": {
+        "tokens_input_uncached": 0.5,
+        "tokens_output": 1.5
+    },
+    "gpt-4-turbo": {
+        "tokens_input_uncached": 10.0,
+        "tokens_output": 30.0
+    },
+    "gpt-4o": {
+        "tokens_input_uncached": 2.5,
+        "tokens_input_cached": 1.25,
+        "tokens_output": 10.0
+    },
+    "gpt-4o-2024-08-06": {
+        "tokens_input_uncached": 2.5,
+        "tokens_input_cached": 1.25,
+        "tokens_output": 10.0
+    },
+    "gpt-4-turbo-2024-04-09": {
+        "tokens_input_uncached": 10.0,
+        "tokens_output": 30.0
+    },
+    "gpt-3.5-turbo-1106": {
+        "tokens_input_uncached": 1.0,
+        "tokens_output": 2.0
+    },
+    "gpt-3.5-turbo-instruct": {
+        "tokens_input_uncached": 1.5,
+        "tokens_output": 2.0
+    },
+    "gpt-4o-audio-preview": {
+        "tokens_input_uncached": 2.5,
+        "tokens_output": 10.0
+    },
+    "gpt-4o-audio-preview-2024-10-01": {
+        "tokens_input_uncached": 2.5,
+        "tokens_output": 10.0
+    },
+    "gpt-3.5-turbo-instruct-0914": {
+        "tokens_input_uncached": 1.5,
+        "tokens_output": 2.0
+    },
+    "chatgpt-4o-latest": {
+        "tokens_input_uncached": 5.0,
+        "tokens_input_cached": 0.0,
+        "tokens_output": 15.0
+    },
+    "gpt-4o-2024-05-13": {
+        "tokens_input_uncached": 5.0,
+        "tokens_output": 15.0
+    },
+    "ministral-3b-2410": {
+        "tokens_input_uncached": 0.04,
+        "tokens_output": 0.04
+    },
+    "ministral-3b-latest": {
+        "tokens_input_uncached": 0.04,
+        "tokens_output": 0.04
+    },
+    "ministral-8b-2410": {
+        "tokens_input_uncached": 0.1,
+        "tokens_output": 0.1
+    },
+    "ministral-8b-latest": {
+        "tokens_input_uncached": 0.1,
+        "tokens_output": 0.1
+    },
+    "open-mistral-7b": {
+        "tokens_input_uncached": 0.25,
+        "tokens_output": 0.25
+    },
+    "open-mistral-nemo": {
+        "tokens_input_uncached": 0.15,
+        "tokens_output": 0.15
+    },
+    "open-mistral-nemo-2407": {
+        "tokens_input_uncached": 0.15,
+        "tokens_output": 0.15
+    },
+    "open-mixtral-8x7b": {
+        "tokens_input_uncached": 0.7,
+        "tokens_output": 0.7
+    },
+    "mistral-small": {
+        "tokens_input_uncached": 0.2,
+        "tokens_output": 0.2
+    },
+    "mistral-small-2312": {
+        "tokens_input_uncached": 0.2,
+        "tokens_output": 0.2
+    },
+    "open-mixtral-8x22b": {
+        "tokens_input_uncached": 2.0,
+        "tokens_output": 6.0
+    },
+    "open-mixtral-8x22b-2404": {
+        "tokens_input_uncached": 2.0,
+        "tokens_output": 6.0
+    },
+    "mistral-small-2402": {
+        "tokens_input_uncached": 0.2,
+        "tokens_output": 0.2
+    },
+    "mistral-small-2409": {
+        "tokens_input_uncached": 0.2,
+        "tokens_output": 0.2
+    },
+    "mistral-small-latest": {
+        "tokens_input_uncached": 0.2,
+        "tokens_output": 0.2
+    },
+    "mistral-large-2402": {
+        "tokens_input_uncached": 2.0,
+        "tokens_output": 6.0
+    },
+    "mistral-large-2407": {
+        "tokens_input_uncached": 2.0,
+        "tokens_output": 6.0
+    },
+    "mistral-large-2411": {
+        "tokens_input_uncached": 2.0,
+        "tokens_output": 6.0
+    },
+    "mistral-large-latest": {
+        "tokens_input_uncached": 2.0,
+        "tokens_output": 6.0
+    },
+    "pixtral-large-2411": {
+        "tokens_input_uncached": 2.0,
+        "tokens_input_cached": 2.0,
+        "tokens_output": 6.0
+    },
+    "pixtral-large-latest": {
+        "tokens_input_uncached": 2.0,
+        "tokens_input_cached": 2.0,
+        "tokens_output": 6.0
+    },
+    "codestral-2405": {
+        "tokens_input_uncached": 0.2,
+        "tokens_output": 0.6
+    },
+    "codestral-latest": {
+        "tokens_input_uncached": 0.2,
+        "tokens_output": 0.6
+    },
+    "pixtral-12b-2409": {
+        "tokens_input_uncached": 0.15,
+        "tokens_input_cached": 0.15,
+        "tokens_output": 0.15
+    },
+    "pixtral-12b": {
+        "tokens_input_uncached": 0.15,
+        "tokens_input_cached": 0.15,
+        "tokens_output": 0.15
+    },
+    "pixtral-12b-latest": {
+        "tokens_input_uncached": 0.15,
+        "tokens_input_cached": 0.15,
+        "tokens_output": 0.15
+    },
+    "x-ai/grok-vision-beta": {
+        "tokens_input_uncached": 5.0,
+        "tokens_output": 15.0
+    },
+    "meta-llama/llama-3.2-90b-vision-instruct": {
+        "tokens_input_uncached": 0.8,
+        "tokens_output": 1.6
+    },
+    "google/gemini-pro-1.5": {
+        "tokens_input_uncached": 1.25,
+        "tokens_output": 5.0
+    },
+    "google/gemini-2.0-flash-001": {
+        "tokens_input_uncached": 0.1,
+        "tokens_output": 0.4
+    },
+    "qwen/qwen-2-vl-72b-instruct": {
+        "tokens_input_uncached": 0.4,
+        "tokens_output": 0.4
+    },
+    "qwen/qwen-2-vl-7b-instruct": {
+        "tokens_input_uncached": 0.1,
+        "tokens_output": 0.1
+    },
+    "x-ai/grok-2-vision-1212": {
+        "tokens_input_uncached": 2.0,
+        "tokens_output": 10.0
+    },
+    "anthropic/claude-3-opus": {
+        "tokens_input_uncached": 15.0,
+        "tokens_output": 75.0
+    },
+    "anthropic/claude-3.5-sonnet": {
+        "tokens_input_uncached": 3.0,
+        "tokens_output": 15.0
+    },
+    "anthropic/claude-3-haiku": {
+        "tokens_input_uncached": 0.25,
+        "tokens_output": 1.25
+    },
+    "minimax/minimax-01": {
+        "tokens_input_uncached": 0.2,
+        "tokens_output": 1.1
+    },
+    "nm-testing/pixtral-12b-FP8-dynamic": {
+        "tokens_input_uncached": 0.0,
+        "tokens_output": 0.0
+    }
+}

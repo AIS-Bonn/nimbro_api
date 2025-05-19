@@ -5,6 +5,7 @@ from launch import LaunchDescription
 from launch.substitutions import LaunchConfiguration
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from ament_index_python.packages import get_package_prefix
+from launch_ros.parameter_descriptions import ParameterValue
 
 launch_args = [
     DeclareLaunchArgument('nimbro_api_completions_namespace', default_value='nimbro_api', description='The namespace of all launched nodes.'),
@@ -12,7 +13,7 @@ launch_args = [
     DeclareLaunchArgument('nimbro_api_completions_nodes', default_value='7', description='The number of completions nodes launched.'),
     DeclareLaunchArgument('nimbro_api_completions_logger_level', default_value='20', choices=['10', '20', '30', '40', '50'], description='Specifies the logging verbosity of all launched nodes (DEBUG=10, INFO=20, WARN=30, ERROR=40, FATAL=50).'),
     DeclareLaunchArgument('nimbro_api_completions_probe_api_connection', default_value='True', choices=['True', 'False'], description='Probes the Models API of the endpoint to validate the API key and model name.'),
-    DeclareLaunchArgument('nimbro_api_completions_api_endpoint', default_value='OpenAI', description="Sets the API endpoint defining API flavor, Models & Completions URLs, key type and value. Must be a valid JSON encoded dictionary or a name in ['OpenAI', 'Mistral AI', 'OpenRouter', vLLM']."),
+    DeclareLaunchArgument('nimbro_api_completions_api_endpoint', default_value='OpenAI', description="Sets the API endpoint defining API flavor, Models & Completions URLs, key type and value. Must be a valid JSON encoded dictionary or a name in ['OpenAI', 'Mistral AI', 'OpenRouter', 'vLLM']."),
     DeclareLaunchArgument('nimbro_api_completions_model_name', default_value='gpt-4o', description='Name of the model that is used.'),
     DeclareLaunchArgument('nimbro_api_completions_model_temperatur', default_value='1.0', description='Higher values like will make the output more random, while lower values like will make it more focused and deterministic.'),
     DeclareLaunchArgument('nimbro_api_completions_model_top_p', default_value='1.0', description='An alternative to sampling with temperature, called nucleus sampling, which behaves similar for similar values.'),
@@ -31,7 +32,8 @@ launch_args = [
     DeclareLaunchArgument('nimbro_api_usage_cache_file', default_value='cache_usage.json', description='Name of the cache file inside the cache folder. If it does not exist it is automatically created.'),
     DeclareLaunchArgument('nimbro_api_usage_cache_read_once', default_value='True', choices=['True', 'False'], description='Read usage cache file once when required and keep it in memory instead of loading it every time.'),
     DeclareLaunchArgument('nimbro_api_usage_cache_write_lazy', default_value='True', choices=['True', 'False'], description='Write usage cache file in fixed intervals instead of writing it with every update.'),
-    DeclareLaunchArgument('nimbro_api_usage_cache_write_interval', default_value='30.0', description='Minimum time in seconds in which the usage cache file is written if cache_write_lazy is active.')
+    DeclareLaunchArgument('nimbro_api_usage_cache_write_interval', default_value='30.0', description='Minimum time in seconds in which the usage cache file is written if cache_write_lazy is active.'),
+    DeclareLaunchArgument('nimbro_api_usage_pricing_path', default_value=os.path.join(get_package_prefix("nimbro_api").replace("install", "src"), "pricing.json"), description='Path to the pricing file that stores the model cost per 1M tokens. Set empty string to disable price calculation.')
 ]
 
 def generate_launch_description():
@@ -53,7 +55,7 @@ def generate_launch_description():
                         {
                             'logger_level': LaunchConfiguration('nimbro_api_completions_logger_level'),
                             'probe_api_connection': LaunchConfiguration('nimbro_api_completions_probe_api_connection'),
-                            'api_endpoint': LaunchConfiguration('nimbro_api_completions_api_endpoint'),
+                            'api_endpoint': ParameterValue(LaunchConfiguration('nimbro_api_completions_api_endpoint'), value_type=str),
                             'model_name': LaunchConfiguration('nimbro_api_completions_model_name'),
                             'model_temperatur': LaunchConfiguration('nimbro_api_completions_model_temperatur'),
                             'model_top_p': LaunchConfiguration('nimbro_api_completions_model_top_p'),
@@ -110,7 +112,8 @@ def generate_launch_description():
                             'cache_file': LaunchConfiguration('nimbro_api_usage_cache_file'),
                             'cache_read_once': LaunchConfiguration('nimbro_api_usage_cache_read_once'),
                             'cache_write_lazy': LaunchConfiguration('nimbro_api_usage_cache_write_lazy'),
-                            'cache_write_interval': LaunchConfiguration('nimbro_api_usage_cache_write_interval')
+                            'cache_write_interval': LaunchConfiguration('nimbro_api_usage_cache_write_interval'),
+                            'pricing_path': LaunchConfiguration('nimbro_api_usage_pricing_path')
                         }
                     ]
                 )

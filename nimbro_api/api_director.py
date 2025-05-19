@@ -5,6 +5,7 @@ import json
 import time
 import random
 import string
+import datetime
 import threading
 
 import rclpy
@@ -13,7 +14,7 @@ from rcl_interfaces.msg import ParameterType
 from rcl_interfaces.srv import GetParameters as rcl_GetParameters
 
 from nimbro_api.utils.node import block_until_future_complete, SelfShutdown
-from nimbro_api_interfaces.srv import GetEmbeddings, GetImage, GetSpeech, GetUsage
+from nimbro_api_interfaces.srv import GetNimbroVision, GetEmbeddings, GetImage, GetSpeech, GetUsage
 from nimbro_api_interfaces.srv import CompletionsManage, CompletionsGetStatus, CompletionsGetSettings
 from nimbro_api_interfaces.srv import CompletionsPrompt, CompletionsStop, CompletionsGetTools, CompletionsSetTools, CompletionsGetContext, CompletionsRemoveContext
 
@@ -24,6 +25,7 @@ class ApiDirector:
 
     def __init__(self, node,
                  completions_multiplexer_name="/nimbro_api/completions_multiplexer",
+                 nimbro_vision_name="/nimbro_api/nimbro_vision",
                  embeddings_name="/nimbro_api/embeddings",
                  images_name="/nimbro_api/images",
                  speech_name="/nimbro_api/speech",
@@ -32,6 +34,7 @@ class ApiDirector:
                  logger_severity=20):
         assert isinstance(node, rclpy.node.Node), f"ApiDirector requires a reference to an object of type 'rclpy.node.Node' but got a reference to an object of type '{type(node).__name__}'!"
         assert isinstance(completions_multiplexer_name, str), f"Expected 'completions_multiplexer_name' to be of type 'str' but it is of type '{type(completions_multiplexer_name).__name__}'!"
+        assert isinstance(nimbro_vision_name, str), f"Expected 'nimbro_vision_name' to be of type 'str' but it is of type '{type(nimbro_vision_name).__name__}'!"
         assert isinstance(embeddings_name, str), f"Expected 'embeddings_name' to be of type 'str' but it is of type '{type(embeddings_name).__name__}'!"
         assert isinstance(images_name, str), f"Expected 'images_name' to be of type 'str' but it is of type '{type(images_name).__name__}'!"
         assert isinstance(speech_name, str), f"Expected 'speech_name' to be of type 'str' but it is of type '{type(speech_name).__name__}'!"
@@ -49,6 +52,8 @@ class ApiDirector:
 
         completions_multiplexer_name = "/" + re.sub(r'^/+|/+$', '', completions_multiplexer_name)
         self._logger.debug(f"Using completions-multiplexer node '{completions_multiplexer_name}'")
+        nimbro_vision_name = "/" + re.sub(r'^/+|/+$', '', nimbro_vision_name)
+        self._logger.debug(f"Using nimbro_vision node '{nimbro_vision_name}'")
         embeddings_name = "/" + re.sub(r'^/+|/+$', '', embeddings_name)
         self._logger.debug(f"Using embeddings node '{embeddings_name}'")
         images_name = "/" + re.sub(r'^/+|/+$', '', images_name)
@@ -66,23 +71,28 @@ class ApiDirector:
 
         self._async_responses = {}
 
-        cbg_services = MutuallyExclusiveCallbackGroup()
+        qos_profile = rclpy.qos.QoSProfile(reliability=rclpy.qos.ReliabilityPolicy.RELIABLE, history=rclpy.qos.HistoryPolicy.KEEP_LAST, depth=50)
 
-        self._cli_completions_prompt = self._node.create_client(CompletionsPrompt, completions_multiplexer_name + "/prompt", callback_group=cbg_services)
-        self._cli_completions_stop = self._node.create_client(CompletionsStop, completions_multiplexer_name + "/stop", callback_group=MutuallyExclusiveCallbackGroup())
-        self._cli_completions_get_tools = self._node.create_client(CompletionsGetTools, completions_multiplexer_name + "/get_tools", callback_group=cbg_services)
-        self._cli_completions_set_tools = self._node.create_client(CompletionsSetTools, completions_multiplexer_name + "/set_tools", callback_group=cbg_services)
-        self._cli_completions_get_context = self._node.create_client(CompletionsGetContext, completions_multiplexer_name + "/get_context", callback_group=MutuallyExclusiveCallbackGroup())
-        self._cli_completions_remove_context = self._node.create_client(CompletionsRemoveContext, completions_multiplexer_name + "/remove_context", callback_group=cbg_services)
+        self._cli_completions_prompt = self._node.create_client(CompletionsPrompt, completions_multiplexer_name + "/prompt", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
+        self._cli_completions_stop = self._node.create_client(CompletionsStop, completions_multiplexer_name + "/stop", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
+        self._cli_completions_get_tools = self._node.create_client(CompletionsGetTools, completions_multiplexer_name + "/get_tools", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
+        self._cli_completions_set_tools = self._node.create_client(CompletionsSetTools, completions_multiplexer_name + "/set_tools", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
+        self._cli_completions_get_context = self._node.create_client(CompletionsGetContext, completions_multiplexer_name + "/get_context", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
+        self._cli_completions_remove_context = self._node.create_client(CompletionsRemoveContext, completions_multiplexer_name + "/remove_context", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
 
-        self._cli_completions_manage = self._node.create_client(CompletionsManage, completions_multiplexer_name + "/manage", callback_group=cbg_services)
-        self._cli_completions_get_status = self._node.create_client(CompletionsGetStatus, completions_multiplexer_name + "/get_status", callback_group=MutuallyExclusiveCallbackGroup())
-        self._cli_completions_get_settings = self._node.create_client(CompletionsGetSettings, completions_multiplexer_name + "/get_settings", callback_group=cbg_services)
+        self._cli_completions_manage = self._node.create_client(CompletionsManage, completions_multiplexer_name + "/manage", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
+        self._cli_completions_get_status = self._node.create_client(CompletionsGetStatus, completions_multiplexer_name + "/get_status", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
+        self._cli_completions_get_settings = self._node.create_client(CompletionsGetSettings, completions_multiplexer_name + "/get_settings", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
 
-        self._cli_get_embeddings = self._node.create_client(GetEmbeddings, embeddings_name + "/get_embeddings", callback_group=MutuallyExclusiveCallbackGroup())
-        self._cli_get_image = self._node.create_client(GetImage, images_name + "/get_image", callback_group=MutuallyExclusiveCallbackGroup())
-        self._cli_get_speech = self._node.create_client(GetSpeech, speech_name + "/get_speech", callback_group=MutuallyExclusiveCallbackGroup())
-        self._cli_get_usage = self._node.create_client(GetUsage, usage_monitor_name + "/get_usage", callback_group=MutuallyExclusiveCallbackGroup())
+        self._cli_mmgroundingdino = self._node.create_client(GetNimbroVision, nimbro_vision_name + "/mmgroundingdino", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
+        self._cli_sam2_realtime_update = self._node.create_client(GetNimbroVision, nimbro_vision_name + "/sam2_realtime_update", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
+        self._cli_sam2_realtime_track = self._node.create_client(GetNimbroVision, nimbro_vision_name + "/sam2_realtime_track", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
+        self._cli_dam = self._node.create_client(GetNimbroVision, nimbro_vision_name + "/dam", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
+
+        self._cli_get_embeddings = self._node.create_client(GetEmbeddings, embeddings_name + "/get_embeddings", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
+        self._cli_get_image = self._node.create_client(GetImage, images_name + "/get_image", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
+        self._cli_get_speech = self._node.create_client(GetSpeech, speech_name + "/get_speech", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
+        self._cli_get_usage = self._node.create_client(GetUsage, usage_monitor_name + "/get_usage", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
 
         # self._cli_get_timeout_parameters = self._node.create_client(rcl_GetParameters, completions_multiplexer_name + "/get_parameters", callback_group=MutuallyExclusiveCallbackGroup())
         # self._timer_timeout_params = self._node.create_timer(5.0, self._get_timeout_params, callback_group=MutuallyExclusiveCallbackGroup())
@@ -143,7 +153,7 @@ class ApiDirector:
                     # self._logger.error(f"Cannot retrieve timeout parameters because the service '{self._cli_get_timeout_parameters.srv_name}' does not respond (Timeout after '{self._service_timeout:.3f}s').")
             except Exception as e:
                 e
-                # self._logger.error(f"Failed to retrieve timeout parameters ({e}).")
+                # self._logger.error(f"Failed to retrieve timeout parameters: {repr(e)}")
             except KeyboardInterrupt:
                 raise SelfShutdown
         else:
@@ -171,7 +181,7 @@ class ApiDirector:
                 cancel = True
                 # TODO some ignore_success field where succession is required but success is irrelevant?
                 if cancel:
-                    message = f"Asynchronous thread '{async_id}' not forwarded because previous asynchronous thread '{self._async_responses[async_id]['succeed_async_id']}' did not succeed."
+                    message = f"Asynchronous thread '{async_id}' not forwarded because previous asynchronous thread '{self._async_responses[async_id]['succeed_async_id']}' did not succeed." # TODO forward message of failed thread
                     self._async_responses[async_id]['response'] = (False, message, None, None)
                     self._logger.info(f"[{self._async_responses[async_id]['completions_id']}] {message}")
                     self._async_responses[async_id]['terminated'] = self._node.get_clock().now()
@@ -250,7 +260,7 @@ class ApiDirector:
                             message = f"Cannot retrieve completions status because the service '{self._cli_completions_get_status.srv_name}' does not respond (Timeout after '{self._service_timeout:.3f}s')."
                     except Exception as e:
                         success = False
-                        message = f"Failed to retrieve completions status ({e})."
+                        message = f"Failed to retrieve completions status: {repr(e)}"
                     except KeyboardInterrupt:
                         raise SelfShutdown
                 if success or not retry:
@@ -303,15 +313,15 @@ class ApiDirector:
                     except Exception as e:
                         completions_id = None
                         success = False
-                        message = f"Failed to acquire completions ({e})."
+                        message = f"Failed to acquire completions: {repr(e)}"
                     except KeyboardInterrupt:
                         raise SelfShutdown
                 if success or not retry:
                     break
                 else:
                     if message != "":
-                        self._logger.warn(f"[{completions_id}] " + message, throttle_duration_sec=self._service_timeout)
-                    self._logger.warn(f"[{completions_id}] Failed to acquire completions, retrying until success...", throttle_duration_sec=self._service_timeout)
+                        self._logger.warn(message, throttle_duration_sec=self._service_timeout)
+                    self._logger.warn("Failed to acquire completions, retrying until success...", throttle_duration_sec=self._service_timeout)
 
         if success and (reset_parameters or reset_context):
             if reset_parameters:
@@ -339,7 +349,7 @@ class ApiDirector:
                             success, message, messages = self.get_context(completions_id=completions_id, retry=retry)
                             if success:
                                 for message in messages:
-                                    success, message, text_response, tool_calls = self.prompt(completions_id=new_completions_id, text=message, role='json', reset_context=False, tool_response_id="", response_type="none", retry=retry)
+                                    success, message, text_response, tool_calls = self.prompt(completions_id=new_completions_id, text=message, role='json', reset_context=False, tool_response_id="", response_type="none", identifier=None, retry=retry)
                                     if not success:
                                         break
         if success:
@@ -349,11 +359,14 @@ class ApiDirector:
 
         return self._log_return(new_completions_id, success, message, new_completions_id)
 
-    def release(self, completions_id, retry=False):
-        if not isinstance(completions_id, str):
-            return self._log_return(None, False, f"Provided argument 'completions_id' is of invalid type '{type(completions_id).__name__}'. Supported type is 'str'.")
+    def release(self, completions_id=None, retry=False):
+        if not (completions_id is None or isinstance(completions_id, str)):
+            return self._log_return(None, False, f"Provided argument 'completions_id' is of invalid type '{type(completions_id).__name__}'. Supported types are 'None' and 'str'.")
         if not isinstance(retry, bool):
             return self._log_return(completions_id, False, f"Provided argument 'retry' is of invalid type '{type(retry).__name__}'. Supported type is 'bool'.")
+
+        if completions_id == "":
+            completions_id = None
 
         while True:
             try:
@@ -367,7 +380,7 @@ class ApiDirector:
                 else:
                     try:
                         request = CompletionsManage.Request()
-                        request.completions_id = completions_id
+                        request.completions_id = "" if completions_id is None else completions_id
                         request.action = "release"
                         request.parameter_names = []
                         request.parameter_values = []
@@ -383,7 +396,7 @@ class ApiDirector:
                             message = f"Cannot release completions because the service '{self._cli_completions_manage.srv_name}' does not respond (Timeout after '{self._service_timeout:.3f}s')."
                     except Exception as e:
                         success = False
-                        message = f"Failed to release completions ({e})."
+                        message = f"Failed to release completions: {repr(e)}"
                     except KeyboardInterrupt:
                         raise SelfShutdown
                 if success or not retry:
@@ -503,7 +516,7 @@ class ApiDirector:
                             message = f"Cannot set parameter '{parameter_names}' because the service '{self._cli_completions_manage.srv_name}' does not respond (Timeout after '{self._service_timeout:.3f}s')."
                     except Exception as e:
                         success = False
-                        message = f"Failed to set parameter '{parameter_names}' ({e})."
+                        message = f"Failed to set parameter '{parameter_names}': {repr(e)}"
                     except KeyboardInterrupt:
                         raise SelfShutdown
                 if success or not retry:
@@ -561,14 +574,14 @@ class ApiDirector:
                             except Exception as e:
                                 parameters = None
                                 success = False
-                                message = f"Failed to parse parameters ({e})."
+                                message = f"Failed to parse parameters: {repr(e)}"
                         else:
                             self._cli_completions_get_settings.remove_pending_request(future)
                             success = False
                             message = f"Cannot retrieve parameters because the service '{self._cli_completions_get_settings.srv_name}' does not respond (Timeout after '{self._service_timeout:.3f}s')."
                     except Exception as e:
                         success = False
-                        message = f"Failed to retrieve parameters ({e})."
+                        message = f"Failed to retrieve parameters: {repr(e)}"
                     except KeyboardInterrupt:
                         raise SelfShutdown
                 if success or not retry:
@@ -585,7 +598,7 @@ class ApiDirector:
 
     # Prompting
 
-    def async_prompt(self, completions_id, text, role="user", reset_context=False, tool_response_id=None, response_type="auto", retry=False, succeed_async_id=None):
+    def async_prompt(self, completions_id, text, role="user", reset_context=False, tool_response_id=None, response_type="auto", identifier=None, retry=False, succeed_async_id=None):
         if not isinstance(completions_id, str):
             return self._log_return(None, False, f"Provided argument 'completions_id' is of invalid type '{type(completions_id).__name__}'. Supported type is 'str'.", None)
         if not isinstance(text, str) and not isinstance(text, dict):
@@ -594,7 +607,7 @@ class ApiDirector:
             try:
                 text = json.dumps(text)
             except Exception as e:
-                return self._log_return(completions_id, False, f"Failed to parse argument 'text' of type 'dict' as JSON ({e}).", None)
+                return self._log_return(completions_id, False, f"Failed to parse argument 'text' of type 'dict' as JSON: {repr(e)}", None)
         if not isinstance(role, str):
             return self._log_return(completions_id, False, f"Provided argument 'role' is of invalid type '{type(role).__name__}'. Supported type is 'str'.", None)
         if not isinstance(reset_context, bool):
@@ -606,6 +619,10 @@ class ApiDirector:
                 tool_response_id = None
         if not isinstance(response_type, str):
             return self._log_return(completions_id, False, f"Provided argument 'response_type' is of invalid type '{type(response_type).__name__}'. Supported type is 'str'.", None)
+        if identifier is not None and not isinstance(identifier, str):
+            return self._log_return(None, False, f"Provided argument 'identifier' is of invalid type '{type(identifier).__name__}'. Supported types are 'None' and 'str'.", None)
+        elif identifier is None:
+            identifier = ""
         if not isinstance(retry, bool):
             return self._log_return(completions_id, False, f"Provided argument 'retry' is of invalid type '{type(retry).__name__}'. Supported type is 'bool'.", None)
         if not (succeed_async_id is None or isinstance(succeed_async_id, str)):
@@ -622,7 +639,7 @@ class ApiDirector:
         self._async_responses[async_id]['completions_id'] = completions_id
         self._async_responses[async_id]['succeed_async_id'] = succeed_async_id
         self._async_responses[async_id]['registered'] = self._node.get_clock().now()
-        self._async_responses[async_id]['thread'] = threading.Thread(target=self._async_thread, args=(async_id, (completions_id, text, role, reset_context, tool_response_id, response_type, retry)))
+        self._async_responses[async_id]['thread'] = threading.Thread(target=self._async_thread, args=(async_id, (completions_id, text, role, reset_context, tool_response_id, response_type, identifier, retry)))
         self._async_responses[async_id]['thread'].start()
 
         return self._log_return(completions_id, True, f"Registered asynchronous thread '{async_id}'.", async_id)
@@ -686,7 +703,7 @@ class ApiDirector:
                 try:
                     tools[i] = json.dumps(tools[i])
                 except Exception as e:
-                    return self._log_return(completions_id, False, f"Failed to parse dictionary '{tools[i]}' as string ({e}).", None)
+                    return self._log_return(completions_id, False, f"Failed to parse dictionary '{tools[i]}' as string: {repr(e)}", None)
             elif not isinstance(tools[i], str):
                 return self._log_return(completions_id, False, f"Provided argument 'tools' contains element '{tools[i]}' of invalid type '{type(tools[i]).__name__}'. Supported types are 'str' and 'dict'.", None)
         if not isinstance(retry, bool):
@@ -711,7 +728,7 @@ class ApiDirector:
 
         return self._log_return(completions_id, True, f"Registered asynchronous thread '{async_id}'.", async_id)
 
-    def prompt(self, completions_id, text, role="user", reset_context=False, tool_response_id=None, response_type="auto", retry=False):
+    def prompt(self, completions_id, text, role="user", reset_context=False, tool_response_id=None, response_type="auto", identifier=None, retry=False):
         if not isinstance(completions_id, str):
             return self._log_return(None, False, f"Provided argument 'completions_id' is of invalid type '{type(completions_id).__name__}'. Supported type is 'str'.", None, None)
         if not isinstance(text, str) and not isinstance(text, dict):
@@ -720,7 +737,7 @@ class ApiDirector:
             try:
                 text = json.dumps(text)
             except Exception as e:
-                return self._log_return(completions_id, False, f"Failed to parse argument 'text' of type 'dict' as JSON ({e}).", None, None)
+                return self._log_return(completions_id, False, f"Failed to parse argument 'text' of type 'dict' as JSON: {repr(e)}", None, None)
         if not isinstance(role, str):
             return self._log_return(completions_id, False, f"Provided argument 'role' is of invalid type '{type(role).__name__}'. Supported type is 'str'.", None, None)
         if not isinstance(reset_context, bool):
@@ -732,6 +749,10 @@ class ApiDirector:
                 tool_response_id = None
         if not isinstance(response_type, str):
             return self._log_return(completions_id, False, f"Provided argument 'response_type' is of invalid type '{type(response_type).__name__}'. Supported type is 'str'.", None, None)
+        if identifier is not None and not isinstance(identifier, str):
+            return self._log_return(None, False, f"Provided argument 'identifier' is of invalid type '{type(identifier).__name__}'. Supported types are 'None' and 'str'.", None)
+        elif identifier is None:
+            identifier = ""
         if not isinstance(retry, bool):
             return self._log_return(completions_id, False, f"Provided argument 'retry' is of invalid type '{type(retry).__name__}'. Supported type is 'bool'.", None, None)
 
@@ -761,6 +782,7 @@ class ApiDirector:
                         else:
                             request.tool_response_id = ""
                         request.response_type = response_type
+                        request.identifier = identifier
                         future = self._cli_completions_prompt.call_async(request)
                         block_until_future_complete(self._node, future, timeout_sec=self._completion_timeout + self._service_timeout)
                         if future.done():
@@ -776,7 +798,7 @@ class ApiDirector:
                                         text_reply = json.loads(response.text)
                                     except Exception as e:
                                         text_reply = response.text
-                                        json_message = f"Failed to parse text response in JSON mode as dictionary ({e})."
+                                        json_message = f"Failed to parse text response in JSON mode as dictionary: {repr(e)}"
                                         self._logger.error(f"[{completions_id}] " + json_message, throttle_duration_sec=self._service_timeout)
 
                             if len(response.tool_calls) > 0:
@@ -787,7 +809,7 @@ class ApiDirector:
                                         raise Exception(f"Tool calls are of type '{type(tool_calls).__name__}' instead of 'list'")
                                 except Exception as e:
                                     tool_calls = None
-                                    json_message = f"Failed to parse tool_calls as dictionary ({e})."
+                                    json_message = f"Failed to parse tool_calls as dictionary: {repr(e)}"
                                     self._logger.error(f"[{completions_id}] " + json_message, throttle_duration_sec=self._service_timeout)
                                 else:
                                     for i, _ in enumerate(tool_calls):
@@ -809,7 +831,7 @@ class ApiDirector:
                                                 raise Exception(f"Tool call 'arguments' are of type '{type(tool_calls[i]['arguments']).__name__}' instead of 'dict'")
                                         except Exception as e:
                                             tool_calls[i] = None
-                                            json_message = f"Failed to parse tool_call as dictionary ({e})."
+                                            json_message = f"Failed to parse tool_call as dictionary: {repr(e)}"
                                             self._logger.error(f"[{completions_id}] " + json_message, throttle_duration_sec=self._service_timeout)
 
                                     tool_calls = [tool_call for tool_call in tool_calls if tool_call is not None]
@@ -828,7 +850,7 @@ class ApiDirector:
                             message = f"Cannot prompt completions because the service '{self._cli_completions_prompt.srv_name}' does not respond (Timeout after '{self._completion_timeout + self._service_timeout:.3f}s')."
                     except Exception as e:
                         success = False
-                        message = f"Failed to prompt completions ({e})."
+                        message = f"Failed to prompt completions: {repr(e)}"
                     except KeyboardInterrupt:
                         raise SelfShutdown
                 # if received_response or not retry:
@@ -872,7 +894,7 @@ class ApiDirector:
                             message = f"Cannot stop prompt because the service '{self._cli_completions_stop.srv_name}' does not respond (Timeout after '{self._service_timeout:.3f}s')."
                     except Exception as e:
                         success = False
-                        message = f"Failed to stop prompt ({e})."
+                        message = f"Failed to stop prompt: {repr(e)}"
                     except KeyboardInterrupt:
                         raise SelfShutdown
                 if success or not retry:
@@ -896,7 +918,7 @@ class ApiDirector:
                 try:
                     tools[i] = json.dumps(tools[i])
                 except Exception as e:
-                    return self._log_return(completions_id, False, f"Failed to parse dictionary '{tools[i]}' as string ({e}).")
+                    return self._log_return(completions_id, False, f"Failed to parse dictionary '{tools[i]}' as string: {repr(e)}")
             elif not isinstance(tools[i], str):
                 return self._log_return(completions_id, False, f"Provided argument 'tools' contains element '{tools[i]}' of invalid type '{type(tools[i]).__name__}'. Supported types are 'str' and 'dict'.")
         if not isinstance(retry, bool):
@@ -933,7 +955,7 @@ class ApiDirector:
                             message = f"Cannot set tools because the service '{self._cli_completions_set_tools.srv_name}' does not respond (Timeout after '{self._service_timeout:.3f}s')."
                     except Exception as e:
                         success = False
-                        message = f"Failed to set tools ({e})."
+                        message = f"Failed to set tools: {repr(e)}"
                     except KeyboardInterrupt:
                         raise SelfShutdown
                 if success or not retry:
@@ -979,7 +1001,7 @@ class ApiDirector:
                                         tools.append(json.loads(response.tools[i]))
                                 except Exception as e:
                                     success = False
-                                    message = f"Failed to parse tool call '{response.tools[i]}' as dictionary ({e})."
+                                    message = f"Failed to parse tool call '{response.tools[i]}' as dictionary: {repr(e)}"
                                     tools = None
                         else:
                             self._cli_completions_get_tools.remove_pending_request(future)
@@ -987,7 +1009,7 @@ class ApiDirector:
                             message = f"Cannot retrieve tools because the service '{self._cli_completions_get_tools.srv_name}' does not respond (Timeout after '{self._service_timeout:.3f}s')."
                     except Exception as e:
                         success = False
-                        message = f"Failed to retrieve tools ({e})."
+                        message = f"Failed to retrieve tools: {repr(e)}"
                     except KeyboardInterrupt:
                         raise SelfShutdown
                 if success or not retry:
@@ -1036,14 +1058,14 @@ class ApiDirector:
                                 except Exception as e:
                                     context = None
                                     success = False
-                                    message = f"Failed to parse message history ({e})."
+                                    message = f"Failed to parse message history: {repr(e)}"
                         else:
                             self._cli_completions_get_context.remove_pending_request(future)
                             success = False
                             message = f"Cannot retrieve message history because the service '{self._cli_completions_get_context.srv_name}' does not respond (Timeout after '{self._service_timeout:.3f}s')."
                     except Exception as e:
                         success = False
-                        message = f"Failed to retrieve the message history ({e})."
+                        message = f"Failed to retrieve the message history: {repr(e)}"
                     except KeyboardInterrupt:
                         raise SelfShutdown
                 if success or not retry:
@@ -1101,9 +1123,9 @@ class ApiDirector:
                     except Exception as e:
                         success = False
                         if remove_all:
-                            message = f"Failed to remove all messages ({e})."
+                            message = f"Failed to remove all messages: {repr(e)}"
                         else:
-                            message = f"Failed to remove message '{message_index}'" + (" (indexing from last to first)" if indexing_last_to_first else "") + f" ({e})."
+                            message = f"Failed to remove message '{message_index}'" + (" (indexing from last to first)" if indexing_last_to_first else "") + f": {repr(e)}"
                     except KeyboardInterrupt:
                         raise SelfShutdown
                 if success or not retry:
@@ -1115,9 +1137,483 @@ class ApiDirector:
 
         return self._log_return(completions_id, success, message)
 
+    # NimbRoVision API
+
+    def mmgroundingdino(self, image, prompts, model_flavor="large", min_confidence=0.0, nms_iou=0.6, overdetect_factor=1.0, retry=False):
+        batch = False
+        if isinstance(image, list):
+            batch = True
+            for i in range(len(image)):
+                if not isinstance(image[i], str):
+                    return self._log_return("mmgroundingdino", False, f"Provided argument 'image' is list that contains invalid type '{type(image[i]).__name__}'. Supported type is 'str'.", None)
+        elif not isinstance(image, str):
+            return self._log_return("mmgroundingdino", False, f"Provided argument 'image' is of invalid type '{type(image).__name__}'. Supported types are 'list' and 'str'.", None)
+
+        if not isinstance(prompts, list):
+            return self._log_return("mmgroundingdino", False, f"Provided argument 'prompts' is of invalid type '{type(prompts).__name__}'. Supported type is 'list'.", None)
+        all_lists = all(isinstance(prompt, list) for prompt in prompts)
+        all_str = all(isinstance(prompt, str) for prompt in prompts)
+        if not (all_lists or all_str):
+            return self._log_return("mmgroundingdino", False, f"Provided argument 'prompts' is list that contains invalid type {[type(prompt).__name__ for prompt in prompts]}. Supported types are either only 'str' or only 'list'.", None)
+        if all_lists:
+            batch = True
+            if not all(all(isinstance(prompt, str) for prompt in prompts_image) for prompts_image in prompts):
+                return self._log_return("mmgroundingdino", False, f"Provided argument 'prompts' is list of lists that contains invalid type {[[type(prompt).__name__ for prompt in image_prompts] for image_prompts in prompts]}. Supported type is 'str'.", None)
+            if any(len(prompts_image) == 0 for prompts_image in prompts):
+                return self._log_return("mmgroundingdino", False, f"Provided argument 'prompts' is list of lists {[len(prompts_image) for prompts_image in prompts]} where one of them is empty.", None)
+            if len(prompts) == 0:
+                return self._log_return("mmgroundingdino", False, "Provided argument 'prompts' is empty list.", None)
+            elif len(prompts) == 1:
+                all_lists = False
+                prompts = prompts[0]
+
+        if not isinstance(model_flavor, str):
+            return self._log_return("mmgroundingdino", False, f"Provided argument 'model_flavor' is of invalid type '{type(model_flavor).__name__}'. Supported type is 'str'.", None)
+
+        if isinstance(min_confidence, list):
+            batch = True
+            for i in range(len(min_confidence)):
+                if not isinstance(min_confidence[i], float):
+                    return self._log_return("mmgroundingdino", False, f"Provided argument 'min_confidence' is list that contains invalid type '{type(min_confidence[i]).__name__}'. Supported type is 'float'.", None)
+            if len(min_confidence) == 0:
+                return self._log_return("mmgroundingdino", False, "Provided argument 'min_confidence' is empty list.", None)
+            elif len(min_confidence) == 1:
+                min_confidence = min_confidence[0]
+        elif not isinstance(min_confidence, float):
+            return self._log_return("mmgroundingdino", False, f"Provided argument 'min_confidence' is of invalid type '{type(min_confidence).__name__}'. Supported types are 'list' and 'float'.", None)
+
+        if isinstance(nms_iou, list):
+            batch = True
+            for i in range(len(nms_iou)):
+                if not (nms_iou[i] is None or isinstance(nms_iou[i], float)):
+                    return self._log_return("mmgroundingdino", False, f"Provided argument 'nms_iou' is list that contains invalid type '{type(nms_iou[i]).__name__}'. Supported types are 'float' and 'None'.", None)
+            if len(nms_iou) == 0:
+                return self._log_return("mmgroundingdino", False, "Provided argument 'nms_iou' is empty list.", None)
+            elif len(nms_iou) == 1:
+                nms_iou = nms_iou[0]
+        elif not (nms_iou is None or isinstance(nms_iou, float)):
+            return self._log_return("mmgroundingdino", False, f"Provided argument 'nms_iou' is of invalid type '{type(nms_iou).__name__}'. Supported types are 'float' and 'None'.", None)
+
+        if isinstance(overdetect_factor, list):
+            batch = True
+            for i in range(len(overdetect_factor)):
+                if not (overdetect_factor[i] is None or isinstance(overdetect_factor[i], float)):
+                    return self._log_return("mmgroundingdino", False, f"Provided argument 'overdetect_factor' is list that contains invalid type '{type(overdetect_factor[i]).__name__}'. Supported types are 'float' and 'None'.", None)
+            if len(overdetect_factor) == 0:
+                return self._log_return("mmgroundingdino", False, "Provided argument 'overdetect_factor' is empty list.", None)
+            elif len(overdetect_factor) == 1:
+                overdetect_factor = overdetect_factor[0]
+        elif not (overdetect_factor is None or isinstance(overdetect_factor, float)):
+            return self._log_return("mmgroundingdino", False, f"Provided argument 'overdetect_factor' is of invalid type '{type(overdetect_factor).__name__}'. Supported types are 'float' and 'None'.", None)
+
+        num_settings = None
+        if all_lists:
+            num_settings = len(prompts)
+        if isinstance(min_confidence, list) and len(min_confidence) > 1:
+            if num_settings is None:
+                num_settings = len(min_confidence)
+            elif num_settings != len(min_confidence):
+                return self._log_return("mmgroundingdino", False, f"Provided argument 'min_confidence' is list of length '{len(min_confidence)}' which cannot be broadcasted with another parameter provided as list of length '{num_settings}'.", None)
+        if isinstance(nms_iou, list) and len(nms_iou) > 1:
+            if num_settings is None:
+                num_settings = len(nms_iou)
+            elif num_settings != len(nms_iou):
+                return self._log_return("mmgroundingdino", False, f"Provided argument 'nms_iou' is list of length '{len(nms_iou)}' which cannot be broadcasted with another parameter provided as list of length '{num_settings}'.", None)
+        if isinstance(overdetect_factor, list) and len(overdetect_factor) > 1:
+            if num_settings is None:
+                num_settings = len(overdetect_factor)
+            elif num_settings != len(overdetect_factor):
+                return self._log_return("mmgroundingdino", False, f"Provided argument 'overdetect_factor' is list of length '{len(overdetect_factor)}' which cannot be broadcasted with another parameter provided as list of length '{num_settings}'.", None)
+        if num_settings is not None and isinstance(image, list) and num_settings > 1 and len(image) > 1 and num_settings != len(image):
+            return self._log_return("mmgroundingdino", False, f"Provided argument 'image' contains '{len(image)}' image, which cannot be broadcasted to the number of settings '{num_settings}'.", None)
+
+        if not isinstance(retry, bool):
+            return self._log_return("mmgroundingdino", False, f"Provided argument 'retry' is of invalid type '{type(retry).__name__}'. Supported type is 'bool'.", None)
+
+        # construct data field
+        data = {}
+        if isinstance(image, list):
+            data['images'] = image
+        else:
+            data['images'] = [image]
+        if num_settings is None:
+            data['inference_parameters'] = [{'prompts': prompts, 'min_confidence': min_confidence, 'nms_iou': nms_iou, 'overdetect_factor': overdetect_factor}]
+        else:
+            data['inference_parameters'] = []
+            for i in range(num_settings):
+                if all_lists:
+                    prompts_set = prompts[i]
+                else:
+                    prompts_set = prompts
+                if isinstance(min_confidence, list):
+                    min_confidence_set = min_confidence[i]
+                else:
+                    min_confidence_set = min_confidence
+
+                if isinstance(overdetect_factor, list):
+                    overdetect_factor_set = overdetect_factor[i]
+                else:
+                    overdetect_factor_set = overdetect_factor
+                data['inference_parameters'].append({'prompts': prompts_set, 'min_confidence': min_confidence_set, 'overdetect_factor': overdetect_factor_set})
+        data = json.dumps(data)
+
+        result = None
+
+        while True:
+            try:
+                available = self._cli_mmgroundingdino.wait_for_service(timeout_sec=self._service_timeout)
+            except KeyboardInterrupt:
+                raise SelfShutdown
+            else:
+                if not available:
+                    success = False
+                    message = f"Cannot use model because the service '{self._cli_mmgroundingdino.srv_name}' is not available (Timeout after '{self._service_timeout:.3f}s')."
+                else:
+                    try:
+                        request = GetNimbroVision.Request()
+                        request.flavor = model_flavor
+                        request.data = data
+                        future = self._cli_mmgroundingdino.call_async(request)
+                        block_until_future_complete(self._node, future, timeout_sec=self._service_timeout)
+                        if future.done():
+                            response = future.result()
+                            success = response.success
+                            message = response.message
+                            if success:
+                                result = response.result
+                                result = json.loads(result)
+                                result = result['artifact']['detections']
+                                if not batch:
+                                    result = result[0]
+                        else:
+                            self._cli_mmgroundingdino.remove_pending_request(future)
+                            success = False
+                            message = f"Cannot retrieve model response because the service '{self._cli_mmgroundingdino.srv_name}' does not respond (Timeout after '{self._service_timeout:.3f}s')."
+                    except Exception as e:
+                        success = False
+                        message = f"Failed to retrieve the model response: {repr(e)}"
+                    except KeyboardInterrupt:
+                        raise SelfShutdown
+                if success or not retry:
+                    break
+                else:
+                    if message != "":
+                        self._logger.warn("[mmgroundingdino] " + message, throttle_duration_sec=self._service_timeout)
+                    self._logger.warn("[mmgroundingdino] Response was not successful, retrying until success...", throttle_duration_sec=self._service_timeout)
+
+        return self._log_return("mmgroundingdino", success, message, result)
+
+    def sam2_realtime_update(self, image, prompts, model_flavor="large", retry=False):
+        if not isinstance(image, str):
+            return self._log_return("sam2_realtime_update", False, f"Provided argument 'image' is of invalid type '{type(image).__name__}'. Supported type is 'str'.", None)
+
+        if not isinstance(prompts, list):
+            return self._log_return("sam2_realtime_update", False, f"Provided argument 'prompts' is of invalid type '{type(prompts).__name__}'. Supported type is 'list'.", None)
+        elif not all(isinstance(prompt, dict) for prompt in prompts):
+            return self._log_return("sam2_realtime_update", False, f"Provided argument 'prompts' is list that contains element of invalid type {[type(prompt).__name__ for prompt in prompts]}. Supported type is 'dict'.", None)
+        try:
+            json.dumps(prompts)
+        except Exception as e:
+            return self._log_return("sam2_realtime_update", False, f"Provided argument 'prompts' cannot be parsed as JSON: {repr(e)}", None)
+
+        if not isinstance(model_flavor, str):
+            return self._log_return("sam2_realtime_update", False, f"Provided argument 'model_flavor' is of invalid type '{type(model_flavor).__name__}'. Supported type is 'str'.", None)
+
+        if not isinstance(retry, bool):
+            return self._log_return("sam2_realtime_update", False, f"Provided argument 'retry' is of invalid type '{type(retry).__name__}'. Supported type is 'bool'.", None)
+
+        result = None
+
+        while True:
+            try:
+                available = self._cli_sam2_realtime_update.wait_for_service(timeout_sec=self._service_timeout)
+            except KeyboardInterrupt:
+                raise SelfShutdown
+            else:
+                if not available:
+                    success = False
+                    message = f"Cannot use model because the service '{self._cli_sam2_realtime_update.srv_name}' is not available (Timeout after '{self._service_timeout:.3f}s')."
+                else:
+                    try:
+                        request = GetNimbroVision.Request()
+                        request.flavor = model_flavor
+                        request.data = json.dumps({'image': image, 'prompts': prompts})
+                        future = self._cli_sam2_realtime_update.call_async(request)
+                        block_until_future_complete(self._node, future, timeout_sec=self._service_timeout)
+                        if future.done():
+                            response = future.result()
+                            success = response.success
+                            message = response.message
+                            if success:
+                                result = response.result
+                                result = json.loads(result)
+                                result = result['artifact']['tracks']
+                                result = result[0]
+                        else:
+                            self._cli_sam2_realtime_update.remove_pending_request(future)
+                            success = False
+                            message = f"Cannot retrieve model response because the service '{self._cli_sam2_realtime_update.srv_name}' does not respond (Timeout after '{self._service_timeout:.3f}s')."
+                    except Exception as e:
+                        success = False
+                        message = f"Failed to retrieve the model response: {repr(e)}"
+                    except KeyboardInterrupt:
+                        raise SelfShutdown
+                if success or not retry:
+                    break
+                else:
+                    if message != "":
+                        self._logger.warn("[sam2_realtime_update] " + message, throttle_duration_sec=self._service_timeout)
+                    self._logger.warn("[sam2_realtime_update] Response was not successful, retrying until success...", throttle_duration_sec=self._service_timeout)
+
+        return self._log_return("sam2_realtime_update", success, message, result)
+
+    def sam2_realtime_track(self, image, retry=False):
+        batch = False
+        if isinstance(image, list):
+            batch = True
+            for i in range(len(image)):
+                if not isinstance(image[i], str):
+                    return self._log_return("sam2_realtime_track", False, f"Provided argument 'image' is list that contains invalid type '{type(image[i]).__name__}'. Supported type is 'str'.", None)
+        elif not isinstance(image, str):
+            return self._log_return("sam2_realtime_track", False, f"Provided argument 'image' is of invalid type '{type(image).__name__}'. Supported types are 'list' and 'str'.", None)
+
+        if not isinstance(image, str):
+            return self._log_return("sam2_realtime_track", False, f"Provided argument 'image' is of invalid type '{type(image).__name__}'. Supported type is 'str'.", None)
+
+        if not isinstance(retry, bool):
+            return self._log_return("sam2_realtime_track", False, f"Provided argument 'retry' is of invalid type '{type(retry).__name__}'. Supported type is 'bool'.", None)
+
+        result = None
+
+        while True:
+            try:
+                available = self._cli_sam2_realtime_track.wait_for_service(timeout_sec=self._service_timeout)
+            except KeyboardInterrupt:
+                raise SelfShutdown
+            else:
+                if not available:
+                    success = False
+                    message = f"Cannot use model because the service '{self._cli_sam2_realtime_track.srv_name}' is not available (Timeout after '{self._service_timeout:.3f}s')."
+                else:
+                    try:
+                        request = GetNimbroVision.Request()
+                        request.flavor = ""
+                        request.data = json.dumps({'images': image} if isinstance(image, list) else {'images': [image]})
+                        future = self._cli_sam2_realtime_track.call_async(request)
+                        block_until_future_complete(self._node, future, timeout_sec=self._service_timeout)
+                        if future.done():
+                            response = future.result()
+                            success = response.success
+                            message = response.message
+                            if success:
+                                result = response.result
+                                result = json.loads(result)
+                                result = result['artifact']['tracks']
+                                if not batch:
+                                    result = result[0]
+                        else:
+                            self._cli_sam2_realtime_track.remove_pending_request(future)
+                            success = False
+                            message = f"Cannot retrieve model response because the service '{self._cli_sam2_realtime_track.srv_name}' does not respond (Timeout after '{self._service_timeout:.3f}s')."
+                    except Exception as e:
+                        success = False
+                        message = f"Failed to retrieve the model response: {repr(e)}"
+                    except KeyboardInterrupt:
+                        raise SelfShutdown
+                if success or not retry:
+                    break
+                else:
+                    if message != "":
+                        self._logger.warn("[sam2_realtime_track] " + message, throttle_duration_sec=self._service_timeout)
+                    self._logger.warn("[sam2_realtime_track] Response was not successful, retrying until success...", throttle_duration_sec=self._service_timeout)
+
+        return self._log_return("sam2_realtime_track", success, message, result)
+
+    def dam(self, image, prompts, query="Describe the masked region in detail.", model_flavor="3B", temperature=0.2, top_p=0.5, num_beams=1, max_new_tokens=512, max_batch_size=32, retry=False):
+        # payload: images, temp, top_p, num_beams, max_new_tokens, max_batch_size, prompts ({'mask', 'bbox'}), query
+
+        batch = False
+        if isinstance(image, list):
+            batch = True
+            for i in range(len(image)):
+                if not isinstance(image[i], str):
+                    return self._log_return("dam", False, f"Provided argument 'image' is list that contains invalid type '{type(image[i]).__name__}'. Supported type is 'str'.", None)
+        elif not isinstance(image, str):
+            return self._log_return("dam", False, f"Provided argument 'image' is of invalid type '{type(image).__name__}'. Supported types are 'list' and 'str'.", None)
+
+        if not isinstance(prompts, list):
+            return self._log_return("dam", False, f"Provided argument 'prompts' is of invalid type '{type(prompts).__name__}'. Supported type is 'list'.", None)
+        all_lists = all(isinstance(prompt, list) for prompt in prompts)
+        all_dict = all(isinstance(prompt, dict) for prompt in prompts)
+        if not (all_lists or all_dict):
+            return self._log_return("dam", False, f"Provided argument 'prompts' is list that contains invalid type {[type(prompt).__name__ for prompt in prompts]}. Supported types are either only 'dict' or only 'list'.", None)
+        if all_lists:
+            batch = True
+            if not all(all(isinstance(prompt, dict) for prompt in prompts_image) for prompts_image in prompts):
+                return self._log_return("dam", False, f"Provided argument 'prompts' is list of lists that contains invalid type {[[type(prompt).__name__ for prompt in image_prompts] for image_prompts in prompts]}. Supported type is 'dict'.", None)
+            if any(len(prompts_image) == 0 for prompts_image in prompts):
+                return self._log_return("dam", False, f"Provided argument 'prompts' is list of lists {[len(prompts_image) for prompts_image in prompts]} where one of them is empty.", None)
+            if len(prompts) == 0:
+                return self._log_return("dam", False, "Provided argument 'prompts' is empty list.", None)
+            elif len(prompts) == 1:
+                all_lists = False
+                prompts = prompts[0]
+        try:
+            json.dumps(prompts)
+        except Exception as e:
+            return self._log_return("dam", False, f"Provided argument 'prompts' cannot be parsed as JSON: {repr(e)}", None)
+
+        if isinstance(query, list):
+            batch = True
+            for i in range(len(query)):
+                if not isinstance(query[i], str):
+                    return self._log_return("dam", False, f"Provided argument 'query' is list that contains invalid type '{type(query[i]).__name__}'. Supported type is 'str'.", None)
+            if len(query) == 0:
+                return self._log_return("dam", False, "Provided argument 'query' is empty list.", None)
+            elif len(query) == 1:
+                query = query[0]
+        elif not isinstance(query, str):
+            return self._log_return("dam", False, f"Provided argument 'query' is of invalid type '{type(query).__name__}'. Supported types are 'list' and 'str'.", None)
+
+        if not isinstance(model_flavor, str):
+            return self._log_return("dam", False, f"Provided argument 'model_flavor' is of invalid type '{type(model_flavor).__name__}'. Supported type is 'str'.", None)
+
+        if isinstance(temperature, list):
+            batch = True
+            for i in range(len(temperature)):
+                if not isinstance(temperature[i], float):
+                    return self._log_return("dam", False, f"Provided argument 'temperature' is list that contains invalid type '{type(temperature[i]).__name__}'. Supported type is 'float'.", None)
+            if len(temperature) == 0:
+                return self._log_return("dam", False, "Provided argument 'temperature' is empty list.", None)
+            elif len(temperature) == 1:
+                temperature = temperature[0]
+        elif not isinstance(temperature, float):
+            return self._log_return("dam", False, f"Provided argument 'temperature' is of invalid type '{type(temperature).__name__}'. Supported types are 'list' and 'float'.", None)
+
+        if isinstance(top_p, list):
+            batch = True
+            for i in range(len(top_p)):
+                if not isinstance(top_p[i], float):
+                    return self._log_return("dam", False, f"Provided argument 'top_p' is list that contains invalid type '{type(top_p[i]).__name__}'. Supported type is 'float'.", None)
+            if len(top_p) == 0:
+                return self._log_return("dam", False, "Provided argument 'top_p' is empty list.", None)
+            elif len(top_p) == 1:
+                top_p = top_p[0]
+        elif not isinstance(top_p, float):
+            return self._log_return("dam", False, f"Provided argument 'top_p' is of invalid type '{type(top_p).__name__}'. Supported types are 'list' and 'float'.", None)
+
+        if isinstance(num_beams, list):
+            batch = True
+            for i in range(len(num_beams)):
+                if not isinstance(num_beams[i], int):
+                    return self._log_return("dam", False, f"Provided argument 'num_beams' is list that contains invalid type '{type(num_beams[i]).__name__}'. Supported type is 'int'.", None)
+            if len(num_beams) == 0:
+                return self._log_return("dam", False, "Provided argument 'num_beams' is empty list.", None)
+            elif len(num_beams) == 1:
+                num_beams = num_beams[0]
+        elif not isinstance(num_beams, int):
+            return self._log_return("dam", False, f"Provided argument 'num_beams' is of invalid type '{type(num_beams).__name__}'. Supported types are 'list' and 'int'.", None)
+
+        if isinstance(max_new_tokens, list):
+            batch = True
+            for i in range(len(max_new_tokens)):
+                if not isinstance(max_new_tokens[i], int):
+                    return self._log_return("dam", False, f"Provided argument 'max_new_tokens' is list that contains invalid type '{type(max_new_tokens[i]).__name__}'. Supported type is 'int'.", None)
+            if len(max_new_tokens) == 0:
+                return self._log_return("dam", False, "Provided argument 'max_new_tokens' is empty list.", None)
+            elif len(max_new_tokens) == 1:
+                max_new_tokens = max_new_tokens[0]
+        elif not isinstance(max_new_tokens, int):
+            return self._log_return("dam", False, f"Provided argument 'max_new_tokens' is of invalid type '{type(max_new_tokens).__name__}'. Supported types are 'list' and 'int'.", None)
+
+        if isinstance(max_batch_size, list):
+            batch = True
+            for i in range(len(max_batch_size)):
+                if not isinstance(max_batch_size[i], int):
+                    return self._log_return("dam", False, f"Provided argument 'max_batch_size' is list that contains invalid type '{type(max_batch_size[i]).__name__}'. Supported type is 'int'.", None)
+            if len(max_batch_size) == 0:
+                return self._log_return("dam", False, "Provided argument 'max_batch_size' is empty list.", None)
+            elif len(max_batch_size) == 1:
+                max_batch_size = max_batch_size[0]
+        elif not isinstance(max_batch_size, int):
+            return self._log_return("dam", False, f"Provided argument 'max_batch_size' is of invalid type '{type(max_batch_size).__name__}'. Supported types are 'list' and 'int'.", None)
+
+        if not isinstance(retry, bool):
+            return self._log_return("dam", False, f"Provided argument 'retry' is of invalid type '{type(retry).__name__}'. Supported type is 'bool'.", None)
+
+        lengths = [
+            len(temperature) if isinstance(temperature, list) else 1,
+            len(top_p) if isinstance(top_p, list) else 1,
+            len(num_beams) if isinstance(num_beams, list) else 1,
+            len(max_new_tokens) if isinstance(max_new_tokens, list) else 1,
+            len(max_batch_size) if isinstance(max_batch_size, list) else 1
+        ]
+        max_length = max(lengths)
+        if not all(x == max_length or x == 1 for x in lengths):
+            log = dict(zip(["temperature", "top_p", "num_beams", "max_new_tokens", "max_batch_size"], lengths))
+            return self._log_return("dam", False, f"Provided settings vary in lengths {log} and cannot be broadcasted to the same length. Supported type is 'bool'.", None)
+
+        inference_parameters = []
+        for i in range(max_length):
+            parameter_set = {}
+            for j, (parameter, value) in enumerate(zip(["temperature", "top_p", "num_beams", "max_new_tokens", "max_batch_size"], [temperature, top_p, num_beams, max_new_tokens, max_batch_size])):
+                if lengths[j] == 1:
+                    parameter_set[parameter] = value
+                else:
+                    parameter_set[parameter] = value[i]
+            inference_parameters.append(parameter_set)
+
+        result = None
+
+        data = json.dumps({'images': image if isinstance(image, list) else [image], 'prompts': prompts if all_lists else [prompts], 'queries': query if isinstance(query, list) else [query], 'inference_parameters': inference_parameters})
+
+        while True:
+            try:
+                available = self._cli_dam.wait_for_service(timeout_sec=self._service_timeout)
+            except KeyboardInterrupt:
+                raise SelfShutdown
+            else:
+                if not available:
+                    success = False
+                    message = f"Cannot use model because the service '{self._cli_dam.srv_name}' is not available (Timeout after '{self._service_timeout:.3f}s')."
+                else:
+                    try:
+                        request = GetNimbroVision.Request()
+                        request.flavor = model_flavor
+                        request.data = data
+                        future = self._cli_dam.call_async(request)
+                        block_until_future_complete(self._node, future, timeout_sec=self._service_timeout)
+                        if future.done():
+                            response = future.result()
+                            success = response.success
+                            message = response.message
+                            if success:
+                                result = response.result
+                                result = json.loads(result)
+                                result = result['artifact']['descriptions']
+                                if not batch:
+                                    result = result[0]
+                        else:
+                            self._cli_dam.remove_pending_request(future)
+                            success = False
+                            message = f"Cannot retrieve model response because the service '{self._cli_dam.srv_name}' does not respond (Timeout after '{self._service_timeout:.3f}s')."
+                    except Exception as e:
+                        success = False
+                        message = f"Failed to retrieve the model response: {repr(e)}"
+                    except KeyboardInterrupt:
+                        raise SelfShutdown
+                if success or not retry:
+                    break
+                else:
+                    if message != "":
+                        self._logger.warn("[dam] " + message, throttle_duration_sec=self._service_timeout)
+                    self._logger.warn("[dam] Response was not successful, retrying until success...", throttle_duration_sec=self._service_timeout)
+
+        return self._log_return("dam", success, message, result)
+
     # Other APIs
 
-    def get_embeddings(self, text, retry=False):
+    def get_embeddings(self, text, identifier=None, retry=False):
         if not (isinstance(text, str) or isinstance(text, list)):
             return self._log_return(None, False, f"Provided argument 'text' is of invalid type '{type(text).__name__}'. Supported types are 'str' and 'list'.", None)
         if isinstance(text, str):
@@ -1127,6 +1623,10 @@ class ApiDirector:
         for t in text_list:
             if not isinstance(t, str):
                 return self._log_return(None, False, f"Provided list 'text' features element of invalid type '{type(t).__name__}'. Supported type is 'str'.", None)
+        if identifier is not None and not isinstance(identifier, str):
+            return self._log_return(None, False, f"Provided argument 'identifier' is of invalid type '{type(identifier).__name__}'. Supported types are 'None' and 'str'.", None)
+        elif identifier is None:
+            identifier = ""
         if not isinstance(retry, bool):
             return self._log_return(None, False, f"Provided argument 'retry' is of invalid type '{type(retry).__name__}'. Supported type is 'bool'.", None)
 
@@ -1145,6 +1645,7 @@ class ApiDirector:
                     try:
                         request = GetEmbeddings.Request()
                         request.texts = text_list
+                        request.identifier = identifier
                         future = self._cli_get_embeddings.call_async(request)
                         block_until_future_complete(self._node, future, timeout_sec=self._completion_timeout + self._service_timeout)
                         if future.done():
@@ -1158,7 +1659,7 @@ class ApiDirector:
                             message = f"Cannot get embeddings because the service '{self._cli_get_embeddings.srv_name}' does not respond (Timeout after '{self._completion_timeout + self._service_timeout:.3f}s')."
                     except Exception as e:
                         success = False
-                        message = f"Failed to get embeddings ({e})."
+                        message = f"Failed to get embeddings: {repr(e)}"
                     except KeyboardInterrupt:
                         raise SelfShutdown
                 if success or not retry:
@@ -1216,7 +1717,7 @@ class ApiDirector:
                             message = f"Cannot get image because the service '{self._cli_get_image.srv_name}' does not respond (Timeout after '{self._completion_timeout + self._service_timeout:.3f}s')."
                     except Exception as e:
                         success = False
-                        message = f"Failed to get image ({e})."
+                        message = f"Failed to get image: {repr(e)}"
                     except KeyboardInterrupt:
                         raise SelfShutdown
                 if success or not retry:
@@ -1273,7 +1774,7 @@ class ApiDirector:
                             message = f"Cannot get speech because the service '{self._cli_get_speech.srv_name}' does not respond (Timeout after '{self._completion_timeout + self._service_timeout:.3f}s')."
                     except Exception as e:
                         success = False
-                        message = f"Failed to get speech ({e})."
+                        message = f"Failed to get speech: {repr(e)}"
                     except KeyboardInterrupt:
                         raise SelfShutdown
                 if success or not retry:
@@ -1287,13 +1788,43 @@ class ApiDirector:
 
     # Usage
 
-    def get_usage(self, api_type="", stamp_start="", stamp_end="", retry=False):
-        if not isinstance(api_type, str):
-            return self._log_return(None, False, f"Provided argument 'api_type' is of invalid type '{type(api_type).__name__}'. Supported type is 'str'.", None)
-        if not isinstance(stamp_start, str):
-            return self._log_return(None, False, f"Provided argument 'stamp_start' is of invalid type '{type(stamp_start).__name__}'. Supported type is 'str'.", None)
-        if not isinstance(stamp_end, str):
-            return self._log_return(None, False, f"Provided argument 'stamp_end' is of invalid type '{type(stamp_end).__name__}'. Supported type is 'str'.", None)
+    def get_usage(self, api_type=None, api_endpoint=None, model_name=None, identifier=None, stamp_start=None, stamp_end=None, retry=False):
+        if api_type is not None and not isinstance(api_type, str):
+            return self._log_return(None, False, f"Provided argument 'api_type' is of invalid type '{type(api_type).__name__}'. Supported types are 'None' and 'str'.", None)
+        elif api_type is None:
+            api_type = ""
+        if api_endpoint is not None and not isinstance(api_endpoint, str):
+            return self._log_return(None, False, f"Provided argument 'api_endpoint' is of invalid type '{type(api_endpoint).__name__}'. Supported types are 'None' and 'str'.", None)
+        elif api_endpoint is None:
+            api_endpoint = ""
+        if model_name is not None and not isinstance(model_name, str):
+            return self._log_return(None, False, f"Provided argument 'model_name' is of invalid type '{type(model_name).__name__}'. Supported types are 'None' and 'str'.", None)
+        elif model_name is None:
+            model_name = ""
+        if identifier is not None and not isinstance(identifier, str):
+            return self._log_return(None, False, f"Provided argument 'identifier' is of invalid type '{type(identifier).__name__}'. Supported types are 'None' and 'str'.", None)
+        elif identifier is None:
+            identifier = ""
+        if stamp_start is not None and not isinstance(stamp_start, (str, int, float, datetime.datetime)):
+            return self._log_return(None, False, f"Provided argument 'stamp_start' is of invalid type '{type(stamp_start).__name__}'. Supported types are 'None', 'str', 'int', 'float', and 'datetime.datetime'.", None)
+        elif isinstance(stamp_start, str):
+            pass
+        elif stamp_start is None:
+            stamp_start = ""
+        elif isinstance(stamp_start, datetime.datetime):
+            stamp_start = stamp_start.isoformat()
+        else:
+            stamp_start = datetime.datetime.fromtimestamp(stamp_start).isoformat()
+        if stamp_end is not None and not isinstance(stamp_end, (str, int, float, datetime.datetime)):
+            return self._log_return(None, False, f"Provided argument 'stamp_end' is of invalid type '{type(stamp_end).__name__}'. Supported types are 'None', 'str', 'int', 'float', and 'datetime.datetime'.", None)
+        elif isinstance(stamp_end, str):
+            pass
+        elif stamp_end is None:
+            stamp_end = ""
+        elif isinstance(stamp_end, datetime.datetime):
+            stamp_end = stamp_end.isoformat()
+        else:
+            stamp_end = datetime.datetime.fromtimestamp(stamp_end).isoformat()
         if not isinstance(retry, bool):
             return self._log_return(None, False, f"Provided argument 'retry' is of invalid type '{type(retry).__name__}'. Supported type is 'bool'.", None)
 
@@ -1312,6 +1843,9 @@ class ApiDirector:
                     try:
                         request = GetUsage.Request()
                         request.api_type = api_type
+                        request.api_endpoint = api_endpoint
+                        request.model_name = model_name
+                        request.identifier = identifier
                         request.stamp_start = stamp_start
                         request.stamp_end = stamp_end
                         future = self._cli_get_usage.call_async(request)
@@ -1326,14 +1860,14 @@ class ApiDirector:
                                 except Exception as e:
                                     usage = None
                                     success = False
-                                    message = f"Failed to parse usage ({e})."
+                                    message = f"Failed to parse usage: {repr(e)}"
                         else:
                             self._cli_get_usage.remove_pending_request(future)
                             success = False
                             message = f"Cannot retrieve usage because the service '{self._cli_get_usage.srv_name}' does not respond (Timeout after '{self._service_timeout:.3f}s')."
                     except Exception as e:
                         success = False
-                        message = f"Failed to retrieve usage ({e})."
+                        message = f"Failed to retrieve usage: {repr(e)}"
                     except KeyboardInterrupt:
                         raise SelfShutdown
                 if success or not retry:

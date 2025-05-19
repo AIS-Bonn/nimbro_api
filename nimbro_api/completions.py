@@ -508,7 +508,7 @@ class Completions(Node):
                 response = requests.get(api_endpoint['models_url'], headers=headers)
             except Exception as e:
                 success = False
-                message = f"Error while probing Models API: Failed to retrieve available models: {e}"
+                message = f"Error while probing Models API: Failed to retrieve available models: {repr(e)}"
             else:
                 if response.status_code != 200:
                     success = False
@@ -569,20 +569,20 @@ class Completions(Node):
             try:
                 message = json.loads(text)
             except Exception as e:
-                response.message = f"Invalid request - Field 'role' is set to 'json' but 'text' field cannot be parsed as JSON ({e})."
+                response.message = f"Invalid request - Field 'role' is set to 'json' but 'text' field cannot be parsed as JSON: {repr(e)}"
                 self.get_logger().error(f"Failed to prompt model ({response.message[:-1]})")
                 return None, response
             else:
                 try:
                     self.check_message_validity(message)
                 except Exception as e:
-                    response.message = f"Invalid request - {e}"
+                    response.message = f"Invalid request: {repr(e)}"
                     self.get_logger().error(f"Failed to prompt model ({response.message[:-1]})")
                     return None, response
                 try:
                     message = self.encode_local_images(message)
                 except Exception as e:
-                    response.message = f"Invalid request - {e}"
+                    response.message = f"Invalid request: {repr(e)}"
                     self.get_logger().error(f"Failed to prompt model ({response.message[:-1]})")
                     return None, response
         else:
@@ -820,7 +820,7 @@ class Completions(Node):
                                 with open(element['image_url']['url'], "rb") as image_file:
                                     base64_image = base64.b64encode(image_file.read()).decode('utf-8')
                             except Exception as e:
-                                raise Exception(f"Failed to encode image URL '{element['image_url']['url']}' ({e}).")
+                                raise Exception(f"Failed to encode image URL '{element['image_url']['url']}': {repr(e)}")
                             else:
                                 message['content'][i]['image_url']['url'] = f"data:image/jpeg;base64,{base64_image}"
                         else:
@@ -859,7 +859,7 @@ class Completions(Node):
         try:
             self.check_message_validity(new_message)
         except Exception as e:
-            self.get_logger().warn(f"Unexpected error in validity check of request message '{new_message}' ({e})")
+            self.get_logger().warn(f"Unexpected error in validity check of request message '{new_message}': {repr(e)}")
 
         self.messages.append(new_message)
 
@@ -934,6 +934,7 @@ class Completions(Node):
                         if 'prompt_tokens_details' in chunk['content'] and chunk['content']['prompt_tokens_details'] is None:
                             del chunk['content']['prompt_tokens_details']
                         self.save_usage(
+                            identifier=request.identifier,
                             prompt_tokens=chunk['content']['prompt_tokens'],
                             prompt_tokens_cached=chunk['content'].get('prompt_tokens_details', {}).get('cached_tokens', 0),
                             completion_tokens=chunk['content']['completion_tokens']
@@ -1201,7 +1202,7 @@ class Completions(Node):
                     try:
                         json_data = completion.json()
                     except Exception as e:
-                        message = f"Failed to parse response as JSON: {e}"
+                        message = f"Failed to parse response as JSON: {repr(e)}"
                         self.pipe[1].send({'code': "ERROR", 'content': message})
                     else:
                         if 'choices' not in json_data:
@@ -1235,7 +1236,7 @@ class Completions(Node):
                 return
 
         except Exception as e:
-            message = f"Error while sending prompt (Failed to post request: {e})."
+            message = f"Error while sending prompt (Failed to post request: {repr(e)}"
             self.pipe[1].send({'code': "ERROR", 'content': message})
 
         else:
@@ -1313,7 +1314,7 @@ class Completions(Node):
                                     try:
                                         json_data = json.loads(line[6:])
                                     except Exception as e:
-                                        self.get_logger().warn(f"Ignoring line '{line}' after failure to parse it as JSON ({e})")
+                                        self.get_logger().warn(f"Ignoring line '{line}' after failure to parse it as JSON: {repr(e)}")
                                     else:
                                         # unexpected finish reason
                                         if json_data.get('finish_reason') not in [None, "stop", "tool_calls", "STOP", "end_turn"]:
@@ -1340,7 +1341,7 @@ class Completions(Node):
                                                 try:
                                                     json_choice = json_data["choices"][0]
                                                 except Exception as e:
-                                                    self.get_logger().warn(f"Ignoring data '{json_data}' after failure to parse choice as JSON ({e})")
+                                                    self.get_logger().warn(f"Ignoring data '{json_data}' after failure to parse choice as JSON: {repr(e)}")
                                                 else:
                                                     # unexpected finish reason
                                                     if json_choice.get('finish_reason') not in [None, "stop", "tool_calls", "STOP", "end_turn"]:
@@ -1382,16 +1383,18 @@ class Completions(Node):
 
         self.get_logger().debug("completion_process(): end")
 
-    def save_usage(self, prompt_tokens, prompt_tokens_cached, completion_tokens):
-        self.get_logger().info(f"Completion consumed '{prompt_tokens}' prompt- and '{completion_tokens}' completion tokens")
+    def save_usage(self, identifier, prompt_tokens, prompt_tokens_cached, completion_tokens):
+        tag = identifier if identifier == "" else f" '{identifier}'"
+        self.get_logger().info(f"Completion{tag} consumed '{prompt_tokens}' prompt- and '{completion_tokens}' completion tokens")
 
         usage = ApiUsage()
         usage.api_type = "completions"
         usage.api_endpoint = self.api_endpoint
         usage.model_name = self.model_name
-        usage.input_tokens_uncached = prompt_tokens - prompt_tokens_cached
-        usage.input_tokens_cached = prompt_tokens_cached
-        usage.output_tokens = completion_tokens
+        usage.identifier = identifier
+        usage.tokens_input_uncached = prompt_tokens - prompt_tokens_cached
+        usage.tokens_input_cached = prompt_tokens_cached
+        usage.tokens_output = completion_tokens
 
         self.pub_usage.publish(usage)
 
@@ -1490,7 +1493,7 @@ class Completions(Node):
         try:
             self.check_message_validity(message)
         except Exception as e:
-            self.get_logger().warn(f"Unexpected error in validity check of response message '{message}' ({e})")
+            self.get_logger().warn(f"Unexpected error in validity check of response message '{message}': {repr(e)}")
 
         self.messages.append(message)
         self.get_logger().debug(("Response added to message history: '" + str(message)).replace("\n", "\\n").strip() + "'")
@@ -1587,7 +1590,7 @@ class Completions(Node):
                 json.loads(text)
             except Exception as e:
                 is_valid = False
-                response_message = f"Response cannot be parsed as JSON despite response type being set to JSON ({e})."
+                response_message = f"Response cannot be parsed as JSON despite response type being set to JSON: {repr(e)}"
                 self.get_logger().error(response_message[:-1])
                 correction_response[-1]["content"] = "Your response is invalid because it cannot be parsed as JSON. Please try again and respond only with valid JSON and no additional text."
             else:
@@ -1621,7 +1624,7 @@ class Completions(Node):
                     parameters = json.loads(tool_call[1])
                 except Exception as e:
                     valid = False
-                    message = f"Failed to parse arguments as JSON ({e})."
+                    message = f"Failed to parse arguments as JSON: {repr(e)}"
                 else:
                     for p in parameters.keys():
 
@@ -1790,7 +1793,7 @@ class Completions(Node):
                 response.tools = [json.dumps(tool['function']) for tool in self.tools]
             except Exception as e:
                 response.success = False
-                response.message = f"Failed to parse tools as JSON ({e})."
+                response.message = f"Failed to parse tools as JSON: {repr(e)}"
                 response.tools = []
             else:
                 response.success = True
@@ -1820,7 +1823,7 @@ class Completions(Node):
                     tools.append(json.loads(request.tools[i]))
                 except Exception as e:
                     response.success = False
-                    response.message = f"Failed to parse function '{request.tools[i]}' as JSON ({e})."
+                    response.message = f"Failed to parse function '{request.tools[i]}' as JSON: {repr(e)}"
                     self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
                     break
 

@@ -35,6 +35,8 @@ cache_write_interval = 30.0
 cache_folder = os.path.join(get_package_prefix("nimbro_api").replace("install", "src"), "cache")
 cache_file = "cache_usage.json"
 
+pricing_path = os.path.join(get_package_prefix("nimbro_api").replace("install", "src"), "pricing.json")
+
 ### </Parameter Defaults>
 
 class UsageMonitor(Node):
@@ -105,9 +107,15 @@ class UsageMonitor(Node):
         self.parameter_descriptors.append(descriptor)
         self.declare_parameter(descriptor.name, cache_file, descriptor)
 
-        self.parameter_handler.all_declared()
+        descriptor = ParameterDescriptor()
+        descriptor.name = "pricing_path"
+        descriptor.type = ParameterType.PARAMETER_STRING
+        descriptor.description = "Path to the pricing file that stores the model cost per 1M tokens. Set empty string to disable price calculation."
+        descriptor.read_only = False
+        self.parameter_descriptors.append(descriptor)
+        self.declare_parameter(descriptor.name, pricing_path, descriptor)
 
-        self.define_prices()
+        self.parameter_handler.all_declared()
 
         self.file_lock = threading.Lock()
         self.cache_write_required = False
@@ -163,316 +171,35 @@ class UsageMonitor(Node):
         elif parameter.name == "cache_file":
             self.cache_file = parameter.value
 
+        elif parameter.name == "pricing_path":
+            # TODO structure this by API type and endpoint and retrieve costs for OpenRouter endpoint from their Models API instead
+            if parameter.value == "":
+                self.pricing = {}
+            else:
+                success, reason, pricing = read_json(file_path=parameter.value, logger=self.get_logger())
+                if success:
+                    if not isinstance(pricing, dict):
+                        success = False
+                        reason = f"Expected content of pricing file to be of type 'dict' instead of '{type(pricing).__name__}'."
+                    else:
+                        self.pricing = pricing
+                        self.get_logger().debug(f"Using pricing:\n{json.dumps(self.pricing, indent=4)}")
         else:
             return None, None
 
         return success, reason
 
-    def define_prices(self):
-        # TODO structure this by API type and flavor, put it in an external file, retrieve OpenRouter costs from Models API instead
-        self.pricing = { # dollars per million tokens
-            # Embeddings
-
-            'text-embedding-3-small': {
-                'input_tokens_uncached': 0.02,
-            },
-            'text-embedding-3-large': {
-                'input_tokens_uncached': 0.13,
-            },
-            'text-embedding-ada-002': {
-                'input_tokens_uncached': 0.1,
-            },
-            'mistral-embed': {
-                'input_tokens_uncached': 0.1,
-            },
-
-            # Completions
-
-            # OpenAI
-
-            'gpt-4-1106-preview': {
-                'input_tokens_uncached': 10.0,
-                'output_tokens': 30.0
-            },
-            'gpt-4o-2024-11-20': {
-                'input_tokens_uncached': 2.5,
-                'input_tokens_cached': 1.25,
-                'output_tokens': 1.25
-            },
-            'o1-mini': {
-                'input_tokens_uncached': 3.0,
-                'input_tokens_cached': 1.5,
-                'output_tokens': 12.0
-            },
-            'o1-mini-2024-09-12': {
-                'input_tokens_uncached': 3.0,
-                'input_tokens_cached': 1.5,
-                'output_tokens': 12.0
-            },
-            'o1-preview': {
-                'input_tokens_uncached': 15.0,
-                'input_tokens_cached': 7.50,
-                'output_tokens': 60.0
-            },
-            'gpt-3.5-turbo-16k': {
-                'input_tokens_uncached': 3.0,
-                'output_tokens': 4.0
-            },
-            'o1-preview-2024-09-12': {
-                'input_tokens_uncached': 15.0,
-                'input_tokens_cached': 7.50,
-                'output_tokens': 60.0
-            },
-            'gpt-4-0125-preview': {
-                'input_tokens_uncached': 10.0,
-                'output_tokens': 30.0
-            },
-            'gpt-4': {
-                'input_tokens_uncached': 30.0,
-                'output_tokens': 60.0
-            },
-            'gpt-4o-mini': {
-                'input_tokens_uncached': 0.15,
-                'input_tokens_cached': 0.075,
-                'output_tokens': 0.6
-            },
-            'gpt-4o-mini-2024-07-18': {
-                'input_tokens_uncached': 0.15,
-                'input_tokens_cached': 0.075,
-                'output_tokens': 0.6
-            },
-            'gpt-3.5-turbo': {
-                'input_tokens_uncached': 0.5,
-                'input_tokens_cached': 1.5,
-            },
-            'gpt-3.5-turbo-0125': {
-                'input_tokens_uncached': 0.5,
-                'output_tokens': 1.5
-            },
-            'gpt-4-turbo': {
-                'input_tokens_uncached': 10.0,
-                'output_tokens': 30.0
-            },
-            'gpt-4o': {
-                'input_tokens_uncached': 2.5,
-                'input_tokens_cached': 1.25,
-                'output_tokens': 10.0
-            },
-            'gpt-4o-2024-08-06': {
-                'input_tokens_uncached': 2.5,
-                'input_tokens_cached': 1.25,
-                'output_tokens': 10.0
-            },
-            'gpt-4-turbo-2024-04-09': {
-                'input_tokens_uncached': 10.0,
-                'output_tokens': 30.0
-            },
-            'gpt-3.5-turbo-1106': {
-                'input_tokens_uncached': 1.0,
-                'output_tokens': 2.0
-            },
-            'gpt-3.5-turbo-instruct': {
-                'input_tokens_uncached': 1.5,
-                'output_tokens': 2.0
-            },
-            'gpt-4o-audio-preview': {
-                'input_tokens_uncached': 2.5,
-                'output_tokens': 10.0
-            },
-            'gpt-4o-audio-preview-2024-10-01': {
-                'input_tokens_uncached': 2.5,
-                'output_tokens': 10.0
-            },
-            'gpt-3.5-turbo-instruct-0914': {
-                'input_tokens_uncached': 1.5,
-                'output_tokens': 2.0
-            },
-            'chatgpt-4o-latest': {
-                'input_tokens_uncached': 5.0,
-                'input_tokens_cached': 0.0,
-                'output_tokens': 15.0
-            },
-            'gpt-4o-2024-05-13': {
-                'input_tokens_uncached': 5.0,
-                'output_tokens': 15.0
-            },
-
-            # Mistral AI
-
-            'ministral-3b-2410': {
-                'input_tokens_uncached': 0.04,
-                'output_tokens': 0.04,
-            },
-            'ministral-3b-latest': {
-                'input_tokens_uncached': 0.04,
-                'output_tokens': 0.04,
-            },
-            'ministral-8b-2410': {
-                'input_tokens_uncached': 0.1,
-                'output_tokens': 0.1,
-            },
-            'ministral-8b-latest': {
-                'input_tokens_uncached': 0.1,
-                'output_tokens': 0.1,
-            },
-            'open-mistral-7b': {
-                'input_tokens_uncached': 0.25,
-                'output_tokens': 0.25,
-            },
-            'open-mistral-nemo': {
-                'input_tokens_uncached': 0.15,
-                'output_tokens': 0.15,
-            },
-            'open-mistral-nemo-2407': {
-                'input_tokens_uncached': 0.15,
-                'output_tokens': 0.15,
-            },
-            'open-mixtral-8x7b': {
-                'input_tokens_uncached': 0.7,
-                'output_tokens': 0.7,
-            },
-            'mistral-small': {
-                'input_tokens_uncached': 0.2,
-                'output_tokens': 0.2,
-            },
-            'mistral-small-2312': {
-                'input_tokens_uncached': 0.2,
-                'output_tokens': 0.2,
-            },
-            'open-mixtral-8x22b': {
-                'input_tokens_uncached': 2.0,
-                'output_tokens': 6.0,
-            },
-            'open-mixtral-8x22b-2404': {
-                'input_tokens_uncached': 2.0,
-                'output_tokens': 6.0,
-            },
-            'mistral-small-2402': {
-                'input_tokens_uncached': 0.2,
-                'output_tokens': 0.2,
-            },
-            'mistral-small-2409': {
-                'input_tokens_uncached': 0.2,
-                'output_tokens': 0.2,
-            },
-            'mistral-small-latest': {
-                'input_tokens_uncached': 0.2,
-                'output_tokens': 0.2,
-            },
-            'mistral-large-2402': {
-                'input_tokens_uncached': 2.0,
-                'output_tokens': 6.0,
-            },
-            'mistral-large-2407': {
-                'input_tokens_uncached': 2.0,
-                'output_tokens': 6.0,
-            },
-            'mistral-large-2411': {
-                'input_tokens_uncached': 2.0,
-                'output_tokens': 6.0,
-            },
-            'mistral-large-latest': {
-                'input_tokens_uncached': 2.0,
-                'output_tokens': 6.0,
-            },
-            'pixtral-large-2411': {
-                'input_tokens_uncached': 2.0,
-                'input_tokens_cached': 2.0,
-                'output_tokens': 6.0,
-            },
-            'pixtral-large-latest': {
-                'input_tokens_uncached': 2.0,
-                'input_tokens_cached': 2.0,
-                'output_tokens': 6.0,
-            },
-            'codestral-2405': {
-                'input_tokens_uncached': 0.2,
-                'output_tokens': 0.6,
-            },
-            'codestral-latest': {
-                'input_tokens_uncached': 0.2,
-                'output_tokens': 0.6,
-            },
-            'pixtral-12b-2409': {
-                'input_tokens_uncached': 0.15,
-                'input_tokens_cached': 0.15,
-                'output_tokens': 0.15,
-            },
-            'pixtral-12b': {
-                'input_tokens_uncached': 0.15,
-                'input_tokens_cached': 0.15,
-                'output_tokens': 0.15,
-            },
-            'pixtral-12b-latest': {
-                'input_tokens_uncached': 0.15,
-                'input_tokens_cached': 0.15,
-                'output_tokens': 0.15,
-            },
-
-            # OpenRouter
-
-            'x-ai/grok-vision-beta': {
-                'input_tokens_uncached': 5.0,
-                'output_tokens': 15.0,
-            },
-            'meta-llama/llama-3.2-90b-vision-instruct': {
-                'input_tokens_uncached': 0.8,
-                'output_tokens': 1.6,
-            },
-            'google/gemini-pro-1.5': {
-                'input_tokens_uncached': 1.25,
-                'output_tokens': 5.0,
-            },
-            'google/gemini-2.0-flash-001': {
-                'input_tokens_uncached': 0.1,
-                'output_tokens': 0.4,
-            },
-            'qwen/qwen-2-vl-72b-instruct': {
-                'input_tokens_uncached': 0.4,
-                'output_tokens': 0.4,
-            },
-            'qwen/qwen-2-vl-7b-instruct': {
-                'input_tokens_uncached': 0.1,
-                'output_tokens': 0.1,
-            },
-            'x-ai/grok-2-vision-1212': {
-                'input_tokens_uncached': 2.0,
-                'output_tokens': 10.0,
-            },
-            'anthropic/claude-3-opus': {
-                'input_tokens_uncached': 15.0,
-                'output_tokens': 75.0,
-            },
-            'anthropic/claude-3.5-sonnet': {
-                'input_tokens_uncached': 3.0,
-                'output_tokens': 15.0,
-            },
-            'anthropic/claude-3-haiku': {
-                'input_tokens_uncached': 0.25,
-                'output_tokens': 1.25,
-            },
-            'minimax/minimax-01': {
-                'input_tokens_uncached': 0.2,
-                'output_tokens': 1.1,
-            },
-
-            # VLLM
-
-            'nm-testing/pixtral-12b-FP8-dynamic': {
-                'input_tokens_uncached': 0.0,
-                'output_tokens': 0.0,
-            }
-        }
-
     def monitor_usage(self, msg):
         stamp = datetime.datetime.now().isoformat()
 
         self.get_logger().info(f"Registered '{msg.api_type}' usage - "
+                               f"api_type: '{msg.api_type}', "
                                f"api_endpoint: '{msg.api_endpoint}', "
                                f"model_name: '{msg.model_name}', "
-                               f"input_tokens_uncached: {msg.input_tokens_uncached}, "
-                               f"input_tokens_cached: {msg.input_tokens_cached}, "
-                               f"output_tokens: {msg.output_tokens}")
+                               f"identifier: '{msg.identifier}', "
+                               f"tokens_input_uncached: {msg.tokens_input_uncached}, "
+                               f"tokens_input_cached: {msg.tokens_input_cached}, "
+                               f"tokens_output: {msg.tokens_output}")
 
         api_types = ["completions", "embeddings"]
         if msg.api_type not in api_types:
@@ -490,7 +217,7 @@ class UsageMonitor(Node):
             self.get_logger().error(message)
             return
 
-        if msg.input_tokens_uncached + msg.input_tokens_uncached + msg.input_tokens_uncached == 0:
+        if msg.tokens_input_uncached + msg.tokens_input_uncached + msg.tokens_input_uncached == 0:
             message = "Ignoring usage-message with zero token usage"
             self.get_logger().error(message)
             return
@@ -513,12 +240,14 @@ class UsageMonitor(Node):
             'model_name': msg.model_name,
         }
 
-        if msg.input_tokens_uncached > 0:
-            cache_item['input_tokens_uncached'] = msg.input_tokens_uncached
-        if msg.input_tokens_cached > 0:
-            cache_item['input_tokens_cached'] = msg.input_tokens_cached
-        if msg.output_tokens > 0:
-            cache_item['output_tokens'] = msg.output_tokens
+        if msg.identifier != "":
+            cache_item['identifier'] = msg.identifier
+        if msg.tokens_input_uncached > 0:
+            cache_item['tokens_input_uncached'] = msg.tokens_input_uncached
+        if msg.tokens_input_cached > 0:
+            cache_item['tokens_input_cached'] = msg.tokens_input_cached
+        if msg.tokens_output > 0:
+            cache_item['tokens_output'] = msg.tokens_output
 
         cache[msg.api_type].append(cache_item)
 
@@ -536,22 +265,34 @@ class UsageMonitor(Node):
             success = False
             message = f"Unsupported usage type '{request.api_type}'. Supported usage types are {api_types}."
         else:
+            if request.api_endpoint == "":
+                filter_api_endpoint = None
+            else:
+                filter_api_endpoint = request.api_endpoint
+            if request.model_name == "":
+                filter_model_name = None
+            else:
+                filter_model_name = request.model_name
+            if request.identifier == "":
+                filter_identifier = None
+            else:
+                filter_identifier = request.identifier
             if request.stamp_start == "":
-                stamp_start = None
+                filter_stamp_start = None
             else:
                 try:
-                    stamp_start = datetime.datetime.fromisoformat(request.stamp_start)
+                    filter_stamp_start = datetime.datetime.fromisoformat(request.stamp_start)
                 except ValueError as e:
                     success = False
-                    message = f"Failed to read field 'stamp_start': {e}"
+                    message = f"Failed to read field 'stamp_start': {repr(e)}"
             if request.stamp_end == "":
-                stamp_end = None
+                filter_stamp_end = None
             else:
                 try:
-                    stamp_end = datetime.datetime.fromisoformat(request.stamp_end)
+                    filter_stamp_end = datetime.datetime.fromisoformat(request.stamp_end)
                 except ValueError as e:
                     success = False
-                    message = f"Failed to read field 'stamp_end': {e}"
+                    message = f"Failed to read field 'stamp_end': {repr(e)}"
 
         if not success:
             self.get_logger().error(message)
@@ -576,8 +317,7 @@ class UsageMonitor(Node):
 
         # TODO check cache content and throw error instead of crashing the node
         for api_type in cache:
-            if request.api_type == api_type or request.api_type == "":
-
+            if request.api_type == "" or request.api_type == api_type:
                 if api_type == 'completions' or api_type == 'embeddings':
                     for item in cache[api_type]:
 
@@ -585,24 +325,55 @@ class UsageMonitor(Node):
                         if 'api_flavor' in item and 'api_endpoint' not in item:
                             item['api_endpoint'] = item['api_flavor']
                             del item['api_flavor']
+                        if 'input_tokens_uncached' in item:
+                            item['tokens_input_uncached'] = item['input_tokens_uncached']
+                            del item['input_tokens_uncached']
+                        if 'input_tokens_cached' in item:
+                            item['tokens_input_cached'] = item['input_tokens_cached']
+                            del item['input_tokens_cached']
+                        if 'output_tokens' in item:
+                            item['tokens_output'] = item['output_tokens']
+                            del item['output_tokens']
 
-                        if stamp_start is not None or stamp_end is not None:
+                        # filters
+                        if filter_api_endpoint is not None:
+                            if item.get('api_endpoint') != filter_api_endpoint:
+                                continue
+                        if filter_model_name is not None:
+                            if item.get('model_name') != filter_model_name:
+                                continue
+                        if filter_identifier is not None:
+                            if item.get('identifier') != filter_identifier:
+                                continue
+                        if filter_stamp_start is not None or filter_stamp_end is not None:
                             stamp = datetime.datetime.fromisoformat(item['stamp'])
-                        if stamp_start is not None:
-                            if stamp < stamp_start:
+                        if filter_stamp_start is not None:
+                            if stamp < filter_stamp_start:
                                 continue
-                        if stamp_end is not None:
-                            if stamp > stamp_end:
+                        if filter_stamp_end is not None:
+                            if stamp > filter_stamp_end:
                                 continue
 
+                        # dollars per item
+                        if item.get('model_name') in self.pricing:
+                            tokens_input_uncached_price = (item.get('tokens_input_uncached', 0.0) / 1000000) * self.pricing[item['model_name']].get('tokens_input_uncached', 0.0)
+                            tokens_input_cached_price = (item.get('tokens_input_cached', 0.0) / 1000000) * self.pricing[item['model_name']].get('tokens_input_cached', 0.0)
+                            tokens_output_price = (item.get('tokens_output', 0.0) / 1000000) * self.pricing[item['model_name']].get('tokens_output', 0.0)
+                            if tokens_input_uncached_price > 0 or tokens_input_cached_price > 0:
+                                item['dollars_input'] = tokens_input_uncached_price + tokens_input_cached_price
+                            if tokens_output_price > 0:
+                                item['dollars_output'] = tokens_output_price
+                            if 'dollars_input' in item and 'dollars_output' in item:
+                                item['dollars_total'] = tokens_input_uncached_price + tokens_input_cached_price + tokens_output_price
+
+                        # history
                         if api_type not in usage:
                             usage[api_type] = {}
-
                         if 'history' not in usage[api_type]:
                             usage[api_type]['history'] = []
-
                         usage[api_type]['history'].append(item)
 
+                        # usage per api_type
                         if 'total' not in usage[api_type]:
                             usage[api_type]['total'] = {}
                         if item['api_endpoint'] not in usage[api_type]['total']:
@@ -610,56 +381,81 @@ class UsageMonitor(Node):
                         if item['model_name'] not in usage[api_type]['total'][item['api_endpoint']]:
                             usage[api_type]['total'][item['api_endpoint']][item['model_name']] = {}
 
-                        input_tokens_uncached = usage[api_type]['total'][item['api_endpoint']][item['model_name']].get('input_tokens_uncached', 0) + item.get('input_tokens_uncached', 0)
-                        if input_tokens_uncached > 0:
-                            usage[api_type]['total'][item['api_endpoint']][item['model_name']]['input_tokens_uncached'] = input_tokens_uncached
+                        tokens_input_uncached = usage[api_type]['total'][item['api_endpoint']][item['model_name']].get('tokens_input_uncached', 0) + item.get('tokens_input_uncached', 0)
+                        if tokens_input_uncached > 0:
+                            usage[api_type]['total'][item['api_endpoint']][item['model_name']]['tokens_input_uncached'] = tokens_input_uncached
 
-                        input_tokens_cached = usage[api_type]['total'][item['api_endpoint']][item['model_name']].get('input_tokens_cached', 0) + item.get('input_tokens_cached', 0)
-                        if input_tokens_cached > 0:
-                            usage[api_type]['total'][item['api_endpoint']][item['model_name']]['input_tokens_cached'] = input_tokens_cached
+                        tokens_input_cached = usage[api_type]['total'][item['api_endpoint']][item['model_name']].get('tokens_input_cached', 0) + item.get('tokens_input_cached', 0)
+                        if tokens_input_cached > 0:
+                            usage[api_type]['total'][item['api_endpoint']][item['model_name']]['tokens_input_cached'] = tokens_input_cached
 
-                        output_tokens = usage[api_type]['total'][item['api_endpoint']][item['model_name']].get('output_tokens', 0) + item.get('output_tokens', 0)
-                        if output_tokens > 0:
-                            usage[api_type]['total'][item['api_endpoint']][item['model_name']]['output_tokens'] = output_tokens
+                        tokens_output = usage[api_type]['total'][item['api_endpoint']][item['model_name']].get('tokens_output', 0) + item.get('tokens_output', 0)
+                        if tokens_output > 0:
+                            usage[api_type]['total'][item['api_endpoint']][item['model_name']]['tokens_output'] = tokens_output
 
+        # dollars per api_endpoint and api_type
         for api_type in api_types:
             if api_type in usage:
-                total_dollars = 0.0
+                total_dollars_input = 0.0
+                total_dollars_output = 0.0
                 if 'total' in usage[api_type]:
                     for api_endpoint in usage[api_type]['total']:
                         for model_name in usage[api_type]['total'][api_endpoint]:
                             if model_name in self.pricing:
-                                input_tokens_uncached = usage[api_type]['total'][api_endpoint][model_name].get('input_tokens_uncached', 0)
-                                input_tokens_cached = usage[api_type]['total'][api_endpoint][model_name].get('input_tokens_cached', 0)
-                                output_tokens = usage[api_type]['total'][api_endpoint][model_name].get('output_tokens', 0)
+                                tokens_input_uncached = usage[api_type]['total'][api_endpoint][model_name].get('tokens_input_uncached', 0)
+                                tokens_input_cached = usage[api_type]['total'][api_endpoint][model_name].get('tokens_input_cached', 0)
+                                tokens_output = usage[api_type]['total'][api_endpoint][model_name].get('tokens_output', 0)
 
-                                if input_tokens_uncached > 0:
-                                    if 'input_tokens_uncached' not in self.pricing[model_name]:
-                                        self.get_logger().warn(f"Cannot consider price of '{input_tokens_uncached}' uncached prompt tokens for model '{model_name}'")
-                                if input_tokens_cached > 0:
-                                    if 'input_tokens_cached' not in self.pricing[model_name]:
-                                        self.get_logger().warn(f"Cannot consider price of '{input_tokens_cached}' cached prompt tokens for model '{model_name}'")
-                                if output_tokens > 0:
-                                    if 'output_tokens' not in self.pricing[model_name]:
-                                        self.get_logger().warn(f"Cannot consider price of '{output_tokens}' completion tokens for model '{model_name}'")
+                                if tokens_input_uncached > 0:
+                                    if 'tokens_input_uncached' not in self.pricing[model_name]:
+                                        self.get_logger().warn(f"Cannot consider price of '{tokens_input_uncached}' uncached prompt tokens for model '{model_name}'")
+                                if tokens_input_cached > 0:
+                                    if 'tokens_input_cached' not in self.pricing[model_name]:
+                                        self.get_logger().warn(f"Cannot consider price of '{tokens_input_cached}' cached prompt tokens for model '{model_name}'")
+                                if tokens_output > 0:
+                                    if 'tokens_output' not in self.pricing[model_name]:
+                                        self.get_logger().warn(f"Cannot consider price of '{tokens_output}' completion tokens for model '{model_name}'")
 
-                                input_tokens_uncached_price = (input_tokens_uncached / 1000000) * self.pricing[model_name].get('input_tokens_uncached', 0.0)
-                                input_tokens_cached_price = (input_tokens_cached / 1000000) * self.pricing[model_name].get('input_tokens_cached', 0.0)
-                                output_tokens_price = (output_tokens / 1000000) * self.pricing[model_name].get('output_tokens', 0.0)
+                                tokens_input_uncached_price = (tokens_input_uncached / 1000000) * self.pricing[model_name].get('tokens_input_uncached', 0.0)
+                                tokens_input_cached_price = (tokens_input_cached / 1000000) * self.pricing[model_name].get('tokens_input_cached', 0.0)
+                                tokens_output_price = (tokens_output / 1000000) * self.pricing[model_name].get('tokens_output', 0.0)
 
-                                dollars = input_tokens_uncached_price + input_tokens_cached_price + output_tokens_price
-                                total_dollars += dollars
-                                usage[api_type]['total'][api_endpoint][model_name]['dollars'] = dollars
+                                dollars_input = tokens_input_uncached_price + tokens_input_cached_price
+                                if dollars_input > 0:
+                                    total_dollars_input += dollars_input
+                                    usage[api_type]['total'][api_endpoint][model_name]['dollars_input'] = dollars_input
+
+                                if tokens_output_price > 0:
+                                    total_dollars_output += tokens_output_price
+                                    usage[api_type]['total'][api_endpoint][model_name]['dollars_output'] = tokens_output_price
+
+                                if dollars_input > 0 and tokens_output_price > 0:
+                                    usage[api_type]['total'][api_endpoint][model_name]['dollars_total'] = dollars_input + tokens_output_price
+
                             else:
                                 self.get_logger().warn(f"Cannot estimate price for model '{model_name}'")
-                usage[api_type]['total_dollars'] = total_dollars
 
-        total_dollars = 0.0
+                if total_dollars_input > 0:
+                    usage[api_type]['dollars_input'] = total_dollars_input
+                if total_dollars_input > 0:
+                    usage[api_type]['dollars_output'] = total_dollars_output
+                if total_dollars_input > 0 and total_dollars_output > 0:
+                    usage[api_type]['dollars_total'] = total_dollars_input + total_dollars_output
+
+        # dollars across all api_type
+        total_dollars_input = 0.0
+        total_dollars_output = 0.0
         for api_type in usage:
-            if 'total_dollars' in usage[api_type]:
-                total_dollars += usage[api_type]['total_dollars']
-        if len(usage) > 0:
-            usage['total_dollars'] = total_dollars
+            if 'dollars_input' in usage[api_type]:
+                total_dollars_input += usage[api_type]['dollars_input']
+            if 'dollars_output' in usage[api_type]:
+                total_dollars_output += usage[api_type]['dollars_output']
+        if total_dollars_input > 0:
+            usage['dollars_input'] = total_dollars_input
+        if total_dollars_output > 0:
+            usage['dollars_output'] = total_dollars_output
+        if total_dollars_input > 0 and total_dollars_output > 0:
+            usage['dollars_total'] = total_dollars_input + total_dollars_output
 
         response.success = True
 
@@ -696,7 +492,7 @@ class UsageMonitor(Node):
                 self.get_logger().info(f"Initialized usage cache file '{cache_path}'")
         except Exception as e:
             success = False
-            message = f"Usage cache file does not exist but initializing it under '{cache_path}' failed: {e}"
+            message = f"Usage cache file does not exist but initializing it under '{cache_path}' failed: {repr(e)}"
             self.get_logger().error(message)
         else:
             success, message, cache = read_json(file_path=cache_path, logger=self.get_logger())

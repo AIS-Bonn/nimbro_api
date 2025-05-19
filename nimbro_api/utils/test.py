@@ -32,8 +32,7 @@ class TestNode(Node):
         parameter_sets = [
             # {
             #     'logger_level': "10",
-            #     # 'probe_api_connection': "False",
-            #     'stream_completion': "False",
+            #     'probe_api_connection': "True",
             #     # 'api_endpoint': json.dumps({
             #     #     'name': "OpenAI",
             #     #     'api_flavor': "openai",
@@ -44,20 +43,17 @@ class TestNode(Node):
             #     # }),
             #     'api_endpoint': "OpenAI",
             #     'model_name': "gpt-4o",
-            #     # 'api_endpoint': "Mistral AI",
-            #     # 'model_name': "mistral-large-latest",
-            #     # 'api_endpoint': "OpenRouter",
-            #     # 'model_name': "google/gemini-2.0-flash-001",
-            #     # 'model_temperatur': "0.7",
-            #     # 'model_top_p': "1.0",
-            #     # 'model_max_tokens': "1000",
-            #     # 'model_presence_penalty': "0.0",
-            #     # 'model_frequency_penalty': "0.0",
-            #     # 'normalize_text_response': "False",
-            #     # 'max_tool_calls_per_response': "1",
-            #     'correction_attempts': "0",
-            #     # 'timeout_chunk': "5.0",
-            #     # 'timeout_completion': "30.0"
+            #     'model_temperatur': "1.0",
+            #     'model_top_p': "1.0",
+            #     'model_max_tokens': "1000",
+            #     'model_presence_penalty': "0.0",
+            #     'model_frequency_penalty': "0.0",
+            #     'stream_completion': "True",
+            #     'normalize_text_response': "True",
+            #     'max_tool_calls_per_response': "1",
+            #     'correction_attempts': "2",
+            #     'timeout_chunk': "15.0",
+            #     'timeout_completion': "60.0"
             # },
             {
                 'logger_level': "10",
@@ -94,7 +90,19 @@ class TestNode(Node):
                 'stream_completion': "True",
                 'api_endpoint': "OpenRouter",
                 'model_name': "google/gemini-2.0-flash-001",
-            }
+            },
+            # {
+            #     'logger_level': "10",
+            #     'stream_completion': "False",
+            #     'api_endpoint': "vLLM",
+            #     'model_name': "ministral-8b",
+            # },
+            # {
+            #     'logger_level': "10",
+            #     'stream_completion': "True",
+            #     'api_endpoint': "vLLM",
+            #     'model_name': "ministral-8b"
+            # }
         ]
 
         for params in parameter_sets:

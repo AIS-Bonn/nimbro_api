@@ -19,11 +19,16 @@ def generate_launch_description():
             get_package_share_directory('nimbro_api'), '/launch/images_launch.py'])
     )
 
+    nimbro_vision = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([
+            get_package_share_directory('nimbro_api'), '/launch/nimbro_vision_launch.py'])
+    )
+
     speech = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
             get_package_share_directory('nimbro_api'), '/launch/speech_launch.py'])
     )
 
     return LaunchDescription([
-        completions, embeddings, images, speech
+        completions, embeddings, images, nimbro_vision, speech
     ])

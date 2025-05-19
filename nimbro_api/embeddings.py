@@ -27,7 +27,7 @@ logger_level = 10
 
 probe_api_connection = True
 api_endpoint = "OpenAI"
-model_name = "text-embedding-3-large" # "text-embedding-3-large", # "mistral-embed", # "ais/embedding-llm"
+model_name = "text-embedding-3-large"
 
 cache_use = True
 cache_read_once = True
@@ -378,7 +378,7 @@ class Embeddings(Node):
                 response = requests.get(api_endpoint['models_url'], headers=headers)
             except Exception as e:
                 success = False
-                message = f"Error while probing Models API: Failed to retrieve available models: {e}"
+                message = f"Error while probing Models API: Failed to retrieve available models: {repr(e)}"
             else:
                 if response.status_code != 200:
                     success = False
@@ -427,9 +427,9 @@ class Embeddings(Node):
             response = requests.post(api_url, headers=headers, json=data, stream=False)
         except Exception as e:
             toc = time.perf_counter()
-            self.get_logger().debug(f"Error occured after '{toc - tic:.3f}s': {e}")
+            self.get_logger().debug(f"Error occurred after '{toc - tic:.3f}s': {repr(e)}")
             success = False
-            message = f"{e}"
+            message = f"Failed to POST request: {repr(e)}"
             embeddings = None
         else:
             toc = time.perf_counter()
@@ -447,7 +447,7 @@ class Embeddings(Node):
 
         return success, message, embeddings
 
-    def save_usage(self, texts):
+    def save_usage(self, texts, identifier):
         if self.monitor_usage:
             num_tokens = 0
             tic = time.perf_counter()
@@ -466,15 +466,16 @@ class Embeddings(Node):
         usage.api_type = "embeddings"
         usage.api_endpoint = self.api_endpoint
         usage.model_name = self.model_name
-        usage.input_tokens_uncached = num_tokens
-        usage.input_tokens_cached = 0
-        usage.output_tokens = 0
+        usage.identifier = identifier
+        usage.tokens_input_uncached = num_tokens
+        usage.tokens_input_cached = 0
+        usage.tokens_output = 0
 
         self.pub_usage.publish(usage)
 
         self.get_logger().debug(f"Retrieving missing embedding{'' if len(texts) == 1 else 's'} consumed '{num_tokens}' token{'' if num_tokens == 1 else 's'}")
 
-    def get_embeddings(self, texts):
+    def get_embeddings(self, texts, identifier):
         # parse argument
 
         if len(texts) == 0:
@@ -664,7 +665,7 @@ class Embeddings(Node):
                 )
             if success:
                 self.get_logger().debug(f"Retrieved '{len(missing_idx)}' missing embedding{'' if len(missing_idx) == 1 else 's'} from API")
-                self.save_usage(missing_texts)
+                self.save_usage(missing_texts, identifier)
             else:
                 self.get_logger().error(message)
                 return False, message, None
@@ -752,9 +753,9 @@ class Embeddings(Node):
     # Callbacks
 
     def get_embeddings_callack(self, request, response):
-        self.get_logger().debug("get_embeddings_callack(): start")
+        self.get_logger().debug(f"get_embeddings_callack(): start (identifier: '{request.identifier}')")
 
-        response.success, response.message, embeddings = self.get_embeddings(texts=request.texts)
+        response.success, response.message, embeddings = self.get_embeddings(texts=request.texts, identifier=request.identifier)
         if response.success:
             for embedding_np in embeddings:
                 embedding_msg = Embedding()

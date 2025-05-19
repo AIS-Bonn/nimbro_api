@@ -187,7 +187,7 @@ class Speech(Node):
                     available_models = requests.get(api_settings[api_flavor]['models_url'], headers=headers)
                 except Exception as e:
                     success = False
-                    message = f"Failed to retrieve available models: {e}"
+                    message = f"Failed to retrieve available models: {repr(e)}"
                 else:
                     if available_models.status_code == 200:
                         available_models = [m['id'] for m in available_models.json()['data']]
@@ -308,7 +308,7 @@ class Speech(Node):
                     with open(cache_path, 'r') as f:
                         cache = json.load(f)
                 except Exception as e:
-                    self.get_logger().warn(f"Failed to open cache file '{cache_path}': {e}")
+                    self.get_logger().warn(f"Failed to open cache file '{cache_path}': {repr(e)}")
                 else:
                     speech_path = cache.get(model, {}).get(voice, {}).get(str(speed), {}).get(text)
                     if speech_path is None:
@@ -341,7 +341,7 @@ class Speech(Node):
                 try:
                     os.makedirs(self.cache_folder)
                 except Exception as e:
-                    self.get_logger().error(f"Failed to create cache folder '{self.cache_folder}': {e}")
+                    self.get_logger().error(f"Failed to create cache folder '{self.cache_folder}': {repr(e)}")
 
             # write speech to file
 
@@ -353,7 +353,7 @@ class Speech(Node):
                 with open(speech_path, mode='bw') as f:
                     f.write(speech_bytes)
             except Exception as e:
-                message = f"Failed to write speech to file '{speech_path}': {e}"
+                message = f"Failed to write speech to file '{speech_path}': {repr(e)}"
                 self.get_logger().error(message)
                 return False, message, None
 
@@ -380,7 +380,7 @@ class Speech(Node):
                         with open(cache_path, 'w') as f:
                             json.dump(cache, f, indent=4)
                     except Exception as e:
-                        self.get_logger().error(f"Failed to save speech path to cache file '{cache_path}': {e}")
+                        self.get_logger().error(f"Failed to save speech path to cache file '{cache_path}': {repr(e)}")
 
         # forward results
 

@@ -45,7 +45,7 @@ def read_json(file_path, logger=None):
                 json_object = json.load(f)
     except Exception as e:
         success = False
-        message = f"Failed to read file '{file_path}': {e}"
+        message = f"Failed to read file '{file_path}': {repr(e)}"
         if logger is not None:
             logger.error(message)
         json_object = None
@@ -74,7 +74,7 @@ def write_json(file_path, json_object, indent=True, logger=None):
             os.makedirs(target_folder)
         except Exception as e:
             success = False
-            message = f"Failed to create target folder '{target_folder}': {e}"
+            message = f"Failed to create target folder '{target_folder}': {repr(e)}"
             if logger is not None:
                 logger.error(message)
             return success, message
@@ -93,7 +93,7 @@ def write_json(file_path, json_object, indent=True, logger=None):
                 json.dump(json_object, f, indent=2 if indent else None)
     except Exception as e:
         success = False
-        message = f"Failed to write file '{file_path}': {e}"
+        message = f"Failed to write file '{file_path}': {repr(e)}"
         if logger is not None:
             logger.error(message)
     else:

@@ -193,7 +193,7 @@ class Images(Node):
                     available_models = requests.get(api_settings[api_flavor]['models_url'], headers=headers)
                 except Exception as e:
                     success = False
-                    message = f"Failed to retrieve available models: {e}"
+                    message = f"Failed to retrieve available models: {repr(e)}"
                 else:
                     if available_models.status_code == 200:
                         available_models = [m['id'] for m in available_models.json()['data']]
@@ -360,7 +360,7 @@ class Images(Node):
                     with open(cache_path, 'r') as f:
                         cache = json.load(f)
                 except Exception as e:
-                    self.get_logger().warn(f"Failed to open cache file '{cache_path}': {e}")
+                    self.get_logger().warn(f"Failed to open cache file '{cache_path}': {repr(e)}")
                 else:
                     if model == "dall-e-3":
                         image_path = cache.get(model, {}).get(size, {}).get(quality, {}).get(style, {}).get(prompt)
@@ -375,7 +375,7 @@ class Images(Node):
                         try:
                             image_cv = cv2.imread(image_path)
                         except Exception as e:
-                            self.get_logger().error(f"Failed to read cached image '{image_path}': {e}")
+                            self.get_logger().error(f"Failed to read cached image '{image_path}': {repr(e)}")
                             image_cv = None
 
         # generate image if necessary
@@ -404,7 +404,7 @@ class Images(Node):
                 image_np = np.frombuffer(base64.b64decode(image_b64), np.uint8)
                 image_cv = cv2.imdecode(image_np, cv2.IMREAD_COLOR)
             except Exception as e:
-                message = f"Failed to convert base64 image to cv2: {e}"
+                message = f"Failed to convert base64 image to cv2: {repr(e)}"
                 self.get_logger().error(message)
                 return False, message, None, None
 
@@ -419,7 +419,7 @@ class Images(Node):
                 if not os.path.isfile(image_path):
                     raise Exception("Unknown error not reported by OpenCV")
             except Exception as e:
-                message = f"Failed to write image to file '{image_path}': {e}"
+                message = f"Failed to write image to file '{image_path}': {repr(e)}"
                 self.get_logger().error(message)
                 return False, message, None
 
@@ -455,7 +455,7 @@ class Images(Node):
                     try:
                         os.makedirs(self.cache_folder)
                     except Exception as e:
-                        self.get_logger().error(f"Failed to create cache folder '{self.cache_folder}': {e}")
+                        self.get_logger().error(f"Failed to create cache folder '{self.cache_folder}': {repr(e)}")
 
                 # write cache
 
@@ -464,7 +464,7 @@ class Images(Node):
                         with open(cache_path, 'w') as f:
                             json.dump(cache, f, indent=4)
                     except Exception as e:
-                        self.get_logger().error(f"Failed to save image path to cache file '{cache_path}': {e}")
+                        self.get_logger().error(f"Failed to save image path to cache file '{cache_path}': {repr(e)}")
 
         # convert cv2 image to ROS
 
@@ -472,7 +472,7 @@ class Images(Node):
         try:
             image_msg = self.cv_bridge.cv2_to_imgmsg(image_cv, encoding="rgb8")
         except Exception as e:
-            message = f"Failed to convert image from cv2: {e}"
+            message = f"Failed to convert image from cv2: {repr(e)}"
             self.get_logger().error(message)
             return False, message, None, None
 

@@ -17,7 +17,7 @@ setup(
     zip_safe=True,
     maintainer='Bastian Pätzold',
     maintainer_email='paetzold@ais.uni-bonn.de',
-    description='This package exposes various APIs established by OpenAI (Chat Completions, Embeddings, Audio, Images) and adopted by others to ROS2.',
+    description='This package exposes various APIs (Chat Completions, Embeddings, Images, Speech, NimbRoVision) to ROS2.',
     license='BSD-3-Clause',
     entry_points={
         'console_scripts': [
@@ -25,6 +25,7 @@ setup(
             'completions_multiplexer = nimbro_api.completions_multiplexer:main',
             'embeddings = nimbro_api.embeddings:main',
             'images = nimbro_api.images:main',
+            'nimbro_vision = nimbro_api.nimbro_vision:main',
             'speech = nimbro_api.speech:main',
             'usage_monitor = nimbro_api.usage_monitor:main',
             'test = nimbro_api.utils.test:main',

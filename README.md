@@ -1,6 +1,6 @@
 # nimbro_api
 
-This package exposes various APIs established by OpenAI ([Chat Completions](https://platform.openai.com/docs/api-reference/chat), [Embeddings](https://platform.openai.com/docs/api-reference/embeddings), [Audio](https://platform.openai.com/docs/api-reference/audio), [Images](https://platform.openai.com/docs/api-reference/images)) and adopted by others to ROS2.
+This package exposes various APIs established by OpenAI ([Chat Completions](https://platform.openai.com/docs/api-reference/chat), [Embeddings](https://platform.openai.com/docs/api-reference/embeddings), [Audio](https://platform.openai.com/docs/api-reference/audio), [Images](https://platform.openai.com/docs/api-reference/images), [NimbRoVisionServers](https://github.com/AIS-Bonn/nimbro_vision_servers)) to ROS2.
 
 ## Features
 
@@ -72,7 +72,6 @@ Here is a list of features that I would like to implement at some point:
 - [ ] Action client for streamed Completions
 - [ ] ApiDirector documentation
 - [ ] Allow overwriting context messages
-- [ ] Allow number of parallel completions beyond number of CPU cores
 
 ## Citation
 

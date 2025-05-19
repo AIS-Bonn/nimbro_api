@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import time
 import threading
 import traceback
 
@@ -23,23 +24,43 @@ class SelfShutdown(Exception):
     pass
 
 def block_until_future_complete(node, future, timeout_sec=None):
-    if not hasattr(node, 'is_spinning'):
-        rclpy.spin_until_future_complete(node, future, timeout_sec=timeout_sec)
-    elif not node.is_spinning:
-        rclpy.spin_until_future_complete(node, future, timeout_sec=timeout_sec)
-    else:
-        event = threading.Event()
+    condition = threading.Condition()
+    done_flag = [False]
 
-        def unblock(future):
-            nonlocal event
-            event.set()
+    def future_done_cb(_):
+        with condition:
+            done_flag[0] = True
+            condition.notify_all()
 
-        future.add_done_callback(unblock)
+    future.add_done_callback(future_done_cb)
 
-        if not future.done():
-            event.wait(timeout=timeout_sec)
-        if future.exception() is not None:
-            raise future.exception()
+    start_time = time.monotonic()
+
+    with condition:
+        while not done_flag[0]:
+            time_left = None
+            if timeout_sec is not None:
+                elapsed = time.monotonic() - start_time
+                time_left = max(0.0, timeout_sec - elapsed)
+                if time_left == 0.0:
+                    return False
+
+            try:
+                node.executor.spin_once(timeout_sec=time_left)
+            except KeyboardInterrupt:
+                os._exit(0)
+                # raise KeyboardInterrupt
+            except Exception as e:
+                if not rclpy.ok():
+                    os._exit(0)
+                    # raise e
+                node.get_logger().error(f"{repr(e)}\n{traceback.format_exc()}")
+                if timeout_sec is not None and (time.monotonic() - start_time) >= timeout_sec:
+                    return False
+
+            condition.wait(timeout=0.01)
+
+    return True
 
 def spin_executor(executor):
     try:
@@ -48,7 +69,7 @@ def spin_executor(executor):
         print("External Shutdown Request!")
 
 def spin_node_with_multi_threaded_executor(node, blocking=True):
-    executor = MultiThreadedExecutor()
+    executor = MultiThreadedExecutor(num_threads=100)
     executor.add_node(node)
     node.is_spinning = True
 
@@ -67,11 +88,12 @@ def start_and_spin_node(node_class, args=None, node_args=None, os_shutdown=False
             node = node_class(**node_args)
     except KeyboardInterrupt:
         print("Node interrupted")
-    except SelfShutdown:
-        print("Node triggered self shutdown")
+    except SelfShutdown as e:
+        msg = str(e)
+        print(f"Node triggered self shutdown{(': ' + msg) if msg != '' else ''}")
     except Exception as e:
         trace = traceback.format_exc()
-        print(f"{Colors.RED}Exception occurred while initializing node" + (f": {e}" if str(e) != '' else '') + f"{Colors.END}")
+        print(f"{Colors.RED}Exception occurred while initializing node" + (f": {repr(e)}" if repr(e) != '' else '') + f"{Colors.END}")
         print(f"{Colors.RED}{trace}{Colors.END}")
     else:
         try:
@@ -79,13 +101,14 @@ def start_and_spin_node(node_class, args=None, node_args=None, os_shutdown=False
         except KeyboardInterrupt:
             node.destroy_node()
             print("Node interrupted")
-        except SelfShutdown:
+        except SelfShutdown as e:
             node.destroy_node()
-            print("Node triggered self shutdown")
+            msg = str(e)
+            print(f"Node triggered self shutdown{(': ' + msg) if msg != '' else ''}")
         except Exception as e:
             node.destroy_node()
             trace = traceback.format_exc()
-            node.get_logger().error("Node crashed after Exception" + (f": {e}" if str(e) != '' else ''))
+            node.get_logger().error("Node crashed after Exception" + (f": {repr(e)}" if repr(e) != '' else ''))
             node.get_logger().error(trace)
     if os_shutdown:
         print("Forcing ungraceful node shutdown")

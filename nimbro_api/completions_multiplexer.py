@@ -203,7 +203,20 @@ class CompletionsMultiplexer(Node):
 
         elif request.action == "release":
 
-            if request.completions_id in self.completions.keys():
+            if request.completions_id == "":
+                released_completions = []
+                self.lock.acquire()
+                for completions_id in self.completions:
+                    if self.completions[completions_id]['locked']:
+                        self.completions[completions_id]['locked'] = False
+                        released_completions.append(completions_id)
+                self.lock.release()
+                if len(released_completions) == 0:
+                    response.message = "All completions are already released."
+                else:
+                    response.message = f"Released completions {released_completions} ({len(released_completions)})."
+
+            elif request.completions_id in self.completions.keys():
                 response.completions_id = request.completions_id
                 self.lock.acquire()
                 if self.completions[request.completions_id]['locked']:
@@ -340,7 +353,7 @@ class CompletionsMultiplexer(Node):
 
                                 except Exception as e:
                                     response.success = False
-                                    response.message = (response.message + f" Failed to parse response ({e}).").lstrip()
+                                    response.message = (response.message + f" Failed to parse response: {repr(e)}").lstrip()
                                 else:
                                     response.success = True
                                     response.message = (response.message + f" Successfully retrieved parameters of completions '{request.completions_id}'.").lstrip()
@@ -353,7 +366,7 @@ class CompletionsMultiplexer(Node):
                                 response.message = (response.message + f" Cannot forward request to completions '{request.completions_id}' because the service '{self.completions[request.completions_id]['get_parameters'].srv_name}' is not responding (Timeout after '{self.timeout_service}s').").lstrip()
                         except Exception as e:
                             response.success = False
-                            response.message = (response.message + f" Failed to forward request to completions '{request.completions_id}' ({e}).").lstrip()
+                            response.message = (response.message + f" Failed to forward request to completions '{request.completions_id}': {repr(e)}").lstrip()
                         except KeyboardInterrupt:
                             raise SelfShutdown
 
@@ -424,7 +437,7 @@ class CompletionsMultiplexer(Node):
                         self.completions[completions]['set_parameters'].remove_pending_request(future)
                 except Exception as e:
                     success = False
-                    message = (message + f" Error occurred while configuring parameters {names} of completions '{completions}' to values {values} ({e}).").lstrip()
+                    message = (message + f" Error occurred while configuring parameters {names} of completions '{completions}' to values {values}: {repr(e)}").lstrip()
                 except KeyboardInterrupt:
                     raise SelfShutdown
 
@@ -454,7 +467,7 @@ class CompletionsMultiplexer(Node):
                         message = f"Cannot reset parameters of completions '{completions}' because the service '{self.completions[completions]['reset'].srv_name}' is not responding (Timeout after '{self.timeout_service}s')."
                 except Exception as e:
                     success = False
-                    message = f"Failed to reset parameters of completions '{completions}' ({e})."
+                    message = f"Failed to reset parameters of completions '{completions}': {repr(e)}"
                 except KeyboardInterrupt:
                     raise SelfShutdown
 
@@ -505,7 +518,7 @@ class CompletionsMultiplexer(Node):
                                 response.message = (response.message + f" Cannot forward prompt to completions '{request.completions_id}' because the service '{self.completions[request.completions_id]['prompt'].srv_name}' is not responding (Timeout after '{self.timeout_completion + self.timeout_service}s').").lstrip()
                         except Exception as e:
                             response.success = False
-                            response.message = (response.message + f" Failed to forward prompt to completions '{request.completions_id}' ({e}).").lstrip()
+                            response.message = (response.message + f" Failed to forward prompt to completions '{request.completions_id}': {repr(e)}").lstrip()
                         except KeyboardInterrupt:
                             raise SelfShutdown
 
@@ -554,7 +567,7 @@ class CompletionsMultiplexer(Node):
                                 response.message = (response.message + f" Cannot forward stop request to completions '{request.completions_id}' because the service '{self.completions[request.completions_id]['stop'].srv_name}' is not responding (Timeout after '{self.timeout_service}s').").lstrip()
                         except Exception as e:
                             response.success = False
-                            response.message = (response.message + f" Failed to forward stop request to completions '{request.completions_id}' ({e}).").lstrip()
+                            response.message = (response.message + f" Failed to forward stop request to completions '{request.completions_id}': {repr(e)}").lstrip()
                         except KeyboardInterrupt:
                             raise SelfShutdown
 
@@ -603,7 +616,7 @@ class CompletionsMultiplexer(Node):
                                 response.message = (response.message + f" Cannot forward tool retrieval request to completions '{request.completions_id}' because the service '{self.completions[request.completions_id]['get_tools'].srv_name}' is not responding (Timeout after '{self.timeout_service}s').").lstrip()
                         except Exception as e:
                             response.success = False
-                            response.message = (response.message + f" Failed to forward tool retrieval request to completions '{request.completions_id}' ({e}).").lstrip()
+                            response.message = (response.message + f" Failed to forward tool retrieval request to completions '{request.completions_id}': {repr(e)}").lstrip()
                         except KeyboardInterrupt:
                             raise SelfShutdown
 
@@ -652,7 +665,7 @@ class CompletionsMultiplexer(Node):
                                 response.message = (response.message + f" Cannot forward tool update request to completions '{request.completions_id}' because the service '{self.completions[request.completions_id]['set_tools'].srv_name}' is not responding (Timeout after '{self.timeout_service}s').").lstrip()
                         except Exception as e:
                             response.success = False
-                            response.message = (response.message + f" Failed to forward tool update request to completions '{request.completions_id}' ({e}).").lstrip()
+                            response.message = (response.message + f" Failed to forward tool update request to completions '{request.completions_id}': {repr(e)}").lstrip()
                         except KeyboardInterrupt:
                             raise SelfShutdown
 
@@ -703,7 +716,7 @@ class CompletionsMultiplexer(Node):
                                 response.message = (response.message + f" Cannot forward message retrieval request to completions '{request.completions_id}' because the service '{self.completions[request.completions_id]['get_context'].srv_name}' is not responding (Timeout after '{self.timeout_service}s').").lstrip()
                         except Exception as e:
                             response.success = False
-                            response.message = (response.message + f" Failed to forward message retrieval request to completions '{request.completions_id}' ({e}).").lstrip()
+                            response.message = (response.message + f" Failed to forward message retrieval request to completions '{request.completions_id}': {repr(e)}").lstrip()
                         except KeyboardInterrupt:
                             raise SelfShutdown
 
@@ -752,7 +765,7 @@ class CompletionsMultiplexer(Node):
                                 response.message = (response.message + f" Cannot forward message removal request to completions '{request.completions_id}' because the service '{self.completions[request.completions_id]['remove_context'].srv_name}' is not responding (Timeout after '{self.timeout_service}s').").lstrip()
                         except Exception as e:
                             response.success = False
-                            response.message = (response.message + f" Failed to forward message removal request to completions '{request.completions_id}' ({e}).").lstrip()
+                            response.message = (response.message + f" Failed to forward message removal request to completions '{request.completions_id}': {repr(e)}").lstrip()
                         except KeyboardInterrupt:
                             raise SelfShutdown
 
