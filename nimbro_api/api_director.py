@@ -88,6 +88,7 @@ class ApiDirector:
         self._cli_sam2_realtime_update = self._node.create_client(GetNimbroVision, nimbro_vision_name + "/sam2_realtime_update", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
         self._cli_sam2_realtime_track = self._node.create_client(GetNimbroVision, nimbro_vision_name + "/sam2_realtime_track", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
         self._cli_dam = self._node.create_client(GetNimbroVision, nimbro_vision_name + "/dam", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
+        self._cli_florence2 = self._node.create_client(GetNimbroVision, nimbro_vision_name + "/florence2", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
 
         self._cli_get_embeddings = self._node.create_client(GetEmbeddings, embeddings_name + "/get_embeddings", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
         self._cli_get_image = self._node.create_client(GetImage, images_name + "/get_image", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
@@ -1610,6 +1611,139 @@ class ApiDirector:
                     self._logger.warn("[dam] Response was not successful, retrying until success...", throttle_duration_sec=self._service_timeout)
 
         return self._log_return("dam", success, message, result)
+
+    def florence2(self, image, prompt, model_flavor="large", num_beams=3, max_new_tokens=1024, max_batch_size=6, retry=False):
+        batch = False
+        if isinstance(image, list):
+            batch = True
+            for i in range(len(image)):
+                if not isinstance(image[i], str):
+                    return self._log_return("florence2", False, f"Provided argument 'image' is list that contains invalid type '{type(image[i]).__name__}'. Supported type is 'str'.", None)
+        elif not isinstance(image, str):
+            return self._log_return("florence2", False, f"Provided argument 'image' is of invalid type '{type(image).__name__}'. Supported types are 'list' and 'str'.", None)
+
+        if isinstance(prompt, list):
+            batch = True
+            for i in range(len(prompt)):
+                if not isinstance(prompt[i], dict):
+                    return self._log_return("florence2", False, f"Provided argument 'prompt' is list that contains invalid type '{type(prompt[i]).__name__}'. Supported type is 'dict'.", None)
+            if len(prompt) == 0:
+                return self._log_return("florence2", False, "Provided argument 'prompt' is empty list.", None)
+        elif not isinstance(prompt, dict):
+            return self._log_return("florence2", False, f"Provided argument 'prompt' is of invalid type '{type(prompt).__name__}'. Supported types are 'list' and 'dict'.", None)
+        else:
+            prompt = [prompt]
+
+        if not isinstance(model_flavor, str):
+            return self._log_return("florence2", False, f"Provided argument 'model_flavor' is of invalid type '{type(model_flavor).__name__}'. Supported type is 'str'.", None)
+
+        if isinstance(num_beams, list):
+            batch = True
+            for i in range(len(num_beams)):
+                if not isinstance(num_beams[i], int):
+                    return self._log_return("florence2", False, f"Provided argument 'num_beams' is list that contains invalid type '{type(num_beams[i]).__name__}'. Supported type is 'int'.", None)
+            if len(num_beams) == 0:
+                return self._log_return("florence2", False, "Provided argument 'num_beams' is empty list.", None)
+            elif len(num_beams) == 1:
+                num_beams = num_beams[0]
+        elif not isinstance(num_beams, int):
+            return self._log_return("florence2", False, f"Provided argument 'num_beams' is of invalid type '{type(num_beams).__name__}'. Supported types are 'list' and 'int'.", None)
+
+        if isinstance(max_new_tokens, list):
+            batch = True
+            for i in range(len(max_new_tokens)):
+                if not isinstance(max_new_tokens[i], int):
+                    return self._log_return("florence2", False, f"Provided argument 'max_new_tokens' is list that contains invalid type '{type(max_new_tokens[i]).__name__}'. Supported type is 'int'.", None)
+            if len(max_new_tokens) == 0:
+                return self._log_return("florence2", False, "Provided argument 'max_new_tokens' is empty list.", None)
+            elif len(max_new_tokens) == 1:
+                max_new_tokens = max_new_tokens[0]
+        elif not isinstance(max_new_tokens, int):
+            return self._log_return("florence2", False, f"Provided argument 'max_new_tokens' is of invalid type '{type(max_new_tokens).__name__}'. Supported types are 'list' and 'int'.", None)
+
+        if isinstance(max_batch_size, list):
+            batch = True
+            for i in range(len(max_batch_size)):
+                if not isinstance(max_batch_size[i], int):
+                    return self._log_return("florence2", False, f"Provided argument 'max_batch_size' is list that contains invalid type '{type(max_batch_size[i]).__name__}'. Supported type is 'int'.", None)
+            if len(max_batch_size) == 0:
+                return self._log_return("florence2", False, "Provided argument 'max_batch_size' is empty list.", None)
+            elif len(max_batch_size) == 1:
+                max_batch_size = max_batch_size[0]
+        elif not isinstance(max_batch_size, int):
+            return self._log_return("florence2", False, f"Provided argument 'max_batch_size' is of invalid type '{type(max_batch_size).__name__}'. Supported types are 'list' and 'int'.", None)
+
+        lengths = [
+            len(num_beams) if isinstance(num_beams, list) else 1,
+            len(max_new_tokens) if isinstance(max_new_tokens, list) else 1,
+            len(max_batch_size) if isinstance(max_batch_size, list) else 1
+        ]
+        max_length = max(lengths)
+        if not all(x == max_length or x == 1 for x in lengths):
+            log = dict(zip(["num_beams", "max_new_tokens", "max_batch_size"], lengths))
+            return self._log_return("florence2", False, f"Provided settings vary in lengths {log} and cannot be broadcasted to the same length. Supported type is 'bool'.", None)
+
+        inference_parameters = []
+        for i in range(max_length):
+            parameter_set = {}
+            for j, (parameter, value) in enumerate(zip(["num_beams", "max_new_tokens", "max_batch_size"], [num_beams, max_new_tokens, max_batch_size])):
+                if lengths[j] == 1:
+                    parameter_set[parameter] = value
+                else:
+                    parameter_set[parameter] = value[i]
+            inference_parameters.append(parameter_set)
+
+        result = None
+
+        data = json.dumps({'images': image if isinstance(image, list) else [image], 'prompts': prompt, 'inference_parameters': inference_parameters[0]})
+
+        result = None
+
+        while True:
+            try:
+                available = self._cli_florence2.wait_for_service(timeout_sec=self._service_timeout)
+            except KeyboardInterrupt:
+                raise SelfShutdown
+            else:
+                if not available:
+                    success = False
+                    message = f"Cannot use model because the service '{self._cli_florence2.srv_name}' is not available (Timeout after '{self._service_timeout:.3f}s')."
+                else:
+                    try:
+                        request = GetNimbroVision.Request()
+                        request.flavor = model_flavor
+                        request.data = data
+                        future = self._cli_florence2.call_async(request)
+                        block_until_future_complete(self._node, future, timeout_sec=self._service_timeout)
+                        if future.done():
+                            response = future.result()
+                            success = response.success
+                            message = response.message
+                            if success:
+                                result = response.result
+                                result = json.loads(result)
+                                detections = result['artifact']['detections']
+                                captions = result['artifact']['captions']
+                                if not batch:
+                                    detections = detections[0]
+                                    captions = captions[0]
+                        else:
+                            self._cli_florence2.remove_pending_request(future)
+                            success = False
+                            message = f"Cannot retrieve model response because the service '{self._cli_florence2.srv_name}' does not respond (Timeout after '{self._service_timeout:.3f}s')."
+                    except Exception as e:
+                        success = False
+                        message = f"Failed to retrieve the model response: {repr(e)}"
+                    except KeyboardInterrupt:
+                        raise SelfShutdown
+                if success or not retry:
+                    break
+                else:
+                    if message != "":
+                        self._logger.warn("[florence2] " + message, throttle_duration_sec=self._service_timeout)
+                    self._logger.warn("[florence2] Response was not successful, retrying until success...", throttle_duration_sec=self._service_timeout)
+
+        return self._log_return("florence2", success, message, detections, captions)
 
     # Other APIs
 

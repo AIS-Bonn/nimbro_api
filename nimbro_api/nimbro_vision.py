@@ -41,7 +41,11 @@ api_endpoints = {
 
         'dam_url': "http://localhost:9002",
         'dam_key_type': "environment",
-        'dam_key_value': "NIMBRO_VISION_API_KEY"
+        'dam_key_value': "NIMBRO_VISION_API_KEY",
+
+        'florence2_url': "http://localhost:9003",
+        'florence2_key_type': "environment",
+        'florence2_key_value': "NIMBRO_VISION_API_KEY"
     }
 }
 
@@ -54,7 +58,7 @@ class NimbroVision(Node):
         self.node_name = self.get_name()
         self.node_namespace = self.get_namespace()
 
-        self.model_names = ["mmgroundingdino", "sam2_realtime", "dam"]
+        self.model_names = ["mmgroundingdino", "sam2_realtime", "dam", "florence2"]
         self.endpoint_required_sets = [{f"{model}_url", f"{model}_key_type", f"{model}_key_value"} for model in self.model_names]
         self.endpoint_key_type_values = ["environment", "plain"]
 
@@ -124,7 +128,7 @@ class NimbroVision(Node):
         qos_profile = rclpy.qos.QoSProfile(reliability=rclpy.qos.ReliabilityPolicy.RELIABLE, history=rclpy.qos.HistoryPolicy.KEEP_LAST, depth=7)
 
         # payload: images, prompts, min_confidence, overdetect_factor
-        self.srv_image = self.create_service(GetNimbroVision, f"{self.node_namespace}/{self.node_name}/mmgroundingdino".replace("//", "/"), self.mmgroundingdino_callback, qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
+        self.srv_mmgd = self.create_service(GetNimbroVision, f"{self.node_namespace}/{self.node_name}/mmgroundingdino".replace("//", "/"), self.mmgroundingdino_callback, qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
 
         self.cbg_sam2_realtime = MutuallyExclusiveCallbackGroup()
         # payload: image, prompts (box_prompts{'object_id', 'bbox'}, points_prompts{'object_id', 'points', 'labels'})
@@ -134,6 +138,9 @@ class NimbroVision(Node):
 
         # payload: images, temp, top_p, num_beams, max_new_tokens, max_batch_size, prompts ({'mask', 'bbox'}), query
         self.srv_dam = self.create_service(GetNimbroVision, f"{self.node_namespace}/{self.node_name}/dam".replace("//", "/"), self.dam_callback, qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
+
+        # payload: images, prompts, inference_parameters(max_new_tokens max_batch_size, num_beams)
+        self.srv_florence2 = self.create_service(GetNimbroVision, f"{self.node_namespace}/{self.node_name}/florence2".replace("//", "/"), self.florence2_callback, qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
 
         self.get_logger().info("Node started")
 
@@ -492,6 +499,13 @@ class NimbroVision(Node):
     def dam_callback(self, request, response):
         try:
             response = self.handle_request('dam', request, response)
+        except Exception as e:
+            self.get_logger().error(f"{type(e).__name__}: {repr(e)}\n{traceback.format_exc()}")
+        return response
+
+    def florence2_callback(self, request, response):
+        try:
+            response = self.handle_request('florence2', request, response)
         except Exception as e:
             self.get_logger().error(f"{type(e).__name__}: {repr(e)}\n{traceback.format_exc()}")
         return response
