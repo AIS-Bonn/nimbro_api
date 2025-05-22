@@ -51,12 +51,15 @@ def block_until_future_complete(node, future, timeout_sec=None):
                 os._exit(0)
                 # raise KeyboardInterrupt
             except Exception as e:
-                if not rclpy.ok():
-                    os._exit(0)
-                    # raise e
-                node.get_logger().error(f"{repr(e)}\n{traceback.format_exc()}")
-                if timeout_sec is not None and (time.monotonic() - start_time) >= timeout_sec:
-                    return False
+                if isinstance(e, ValueError) and 'generator already executing' in str(e):
+                    pass # someone else is already spinning this executor
+                else:
+                    if not rclpy.ok():
+                        os._exit(0)
+                        # raise e
+                    node.get_logger().error(f"{repr(e)}\n{traceback.format_exc()}")
+                    if timeout_sec is not None and (time.monotonic() - start_time) >= timeout_sec:
+                        return False
 
             condition.wait(timeout=0.01)
 
