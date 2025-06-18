@@ -629,40 +629,32 @@ class Embeddings(Node):
             self.get_logger().info(f"Retrieving '{len(missing_idx)}' missing embedding{'' if len(missing_idx) == 1 else 's'} from API")
             missing_texts = [text_formatted[i] for i in missing_idx]
 
-            if self.api_endpoints[self.api_endpoint]['api_flavor'] == "mistral": # mistral complains about exceeding maximum input tokens
-                floor_mod = (len(missing_texts) // max_texts_per_post, len(missing_texts) % max_texts_per_post)
-                missing_embeddings = []
-                for i in range(floor_mod[0]):
-                    success, message, embeddings_batch = self.embeddings_post(
-                        texts=missing_texts[i * max_texts_per_post: (i + 1) * max_texts_per_post],
-                        model=self.model_name,
-                        api_url=self.api_endpoints[self.api_endpoint]['embeddings_url'],
-                        api_key=api_key
-                    )
-                    if success:
-                        missing_embeddings += embeddings_batch
-                    else:
-                        self.get_logger().error(message)
-                        return False, message, None
-                if floor_mod[1] > 0:
-                    success, message, embeddings_batch = self.embeddings_post(
-                        texts=missing_texts[floor_mod[0] * max_texts_per_post:],
-                        model=self.model_name,
-                        api_url=self.api_endpoints[self.api_endpoint]['embeddings_url'],
-                        api_key=api_key
-                    )
-                    if success:
-                        missing_embeddings += embeddings_batch
-                    else:
-                        self.get_logger().error(message)
-                        return False, message, None
-            else:
-                success, message, missing_embeddings = self.embeddings_post(
-                    texts=missing_texts,
+            floor_mod = (len(missing_texts) // max_texts_per_post, len(missing_texts) % max_texts_per_post)
+            missing_embeddings = []
+            for i in range(floor_mod[0]):
+                success, message, embeddings_batch = self.embeddings_post(
+                    texts=missing_texts[i * max_texts_per_post: (i + 1) * max_texts_per_post],
                     model=self.model_name,
                     api_url=self.api_endpoints[self.api_endpoint]['embeddings_url'],
                     api_key=api_key
                 )
+                if success:
+                    missing_embeddings += embeddings_batch
+                else:
+                    self.get_logger().error(message)
+                    return False, message, None
+            if floor_mod[1] > 0:
+                success, message, embeddings_batch = self.embeddings_post(
+                    texts=missing_texts[floor_mod[0] * max_texts_per_post:],
+                    model=self.model_name,
+                    api_url=self.api_endpoints[self.api_endpoint]['embeddings_url'],
+                    api_key=api_key
+                )
+                if success:
+                    missing_embeddings += embeddings_batch
+                else:
+                    self.get_logger().error(message)
+                    return False, message, None
             if success:
                 self.get_logger().debug(f"Retrieved '{len(missing_idx)}' missing embedding{'' if len(missing_idx) == 1 else 's'} from API")
                 self.save_usage(missing_texts, identifier)
