@@ -1,18 +1,16 @@
 # nimbro_api
 
-This package exposes various APIs established by OpenAI ([Chat Completions](https://platform.openai.com/docs/api-reference/chat), [Embeddings](https://platform.openai.com/docs/api-reference/embeddings), [Audio](https://platform.openai.com/docs/api-reference/audio), [Images](https://platform.openai.com/docs/api-reference/images), [NimbRoVisionServers](https://github.com/AIS-Bonn/nimbro_vision_servers)) to ROS2.
+This package exposes various APIs ([Chat Completions](https://platform.openai.com/docs/api-reference/chat), [Embeddings](https://platform.openai.com/docs/api-reference/embeddings), [Audio](https://platform.openai.com/docs/api-reference/audio), [Images](https://platform.openai.com/docs/api-reference/images), [NimbRoVisionServers](https://github.com/AIS-Bonn/nimbro_vision_servers)) to ROS2.
 
 ## Features
 
-This package targets the ROS2 Foxy and Jazzy [distributions](https://docs.ros.org/en/rolling/Releases.html), but should be compatible with others as well.
+This package targets the ROS2 Humble and Jazzy [distributions](https://docs.ros.org/en/rolling/Releases.html), but should be compatible with others as well.
 
 It is completely Python based and requires [almost](https://github.com/AIS-Bonn/nimbro_api/blob/main/requirements.txt) no external dependencies.
 
 It supports several flavors of the (Chat Completions & Embeddings) APIs to enable enpoints from [OpenAI](https://platform.openai.com/docs/api-reference/chat), [Mistral AI](https://docs.mistral.ai/api/#tag/chat), [OpenRouter](https://openrouter.ai/docs/api-reference/overview) and [vLLM](https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html?ref=blog.mozilla.ai) and any other provider that behaves exactly like one of them.
 
 The Chat Completions integration provides streamed and asynchronous prompting, tool usage, setting tool choice, JSON mode, vision input (web and local), setting model parameters, and message history editing. It also provides monitoring of token usage and cost, validity checks for all inputs and outputs (including JSON schema compliance when using tools), robust timeout behavior, as well as optional text normalization and various self-correction routines in case the model output deviates from what is expected.
-
-All other API integrations provide caching capabilities to reduce cost, bandwidth, and latency.
 
 ## Installation
 
@@ -55,7 +53,7 @@ Acquire a Completions node and prompt it
 
 `success, message, text_response, tool_calls = self.api_director.prompt(completions_id=completions_id, text='Tell me a joke about PhD students.', response_type="text")`
 
-Or get some text embeddings
+or get some text embeddings
 
 `success, message, embeddings = self.api_director.get_embeddings(text=["dog", "helicopter"])`
 
