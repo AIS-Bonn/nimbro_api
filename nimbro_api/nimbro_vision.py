@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
 
 import os
+import re
 import copy
 import json
 import time
-import base64
+import threading
 import traceback
 
+try:
+    import pybase64 as base64
+except ImportError:
+    import base64
 import requests
 
 import rclpy
 from rclpy.node import Node
-from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+from rclpy.callback_groups import ReentrantCallbackGroup
 from rcl_interfaces.msg import ParameterDescriptor, ParameterType, IntegerRange
 
 from nimbro_api_interfaces.srv import GetNimbroVision
@@ -65,24 +70,74 @@ class NimbroVision(Node):
         self.model_names = ["mmgroundingdino", "sam2_realtime", "dam", "kosmos2", "florence2"]
         self.endpoint_required_sets = [{f"{model}_url", f"{model}_key_type", f"{model}_key_value"} for model in self.model_names]
         self.endpoint_key_type_values = ["environment", "plain"]
+        model_names_pattern = "|".join(re.escape(name) for name in self.model_names)
+        self.re_pattern_any = re.compile(
+            rf"^(?P<model>{model_names_pattern})(?:_(?P<idx>\d+))?_(?P<field>url|key_type|key_value)$"
+        )
 
-        for endpoint_name in api_endpoints:
-            assert isinstance(endpoint_name, str), f"Endpoint names must be of type 'str' instead of '{type(endpoint_name).__name__}'."
-            endpoint = api_endpoints[endpoint_name]
-            assert isinstance(endpoint, dict), f"Endpoint '{endpoint_name}' must be of type 'dict' instead of '{type(endpoint).__name__}'."
-            assert all(isinstance(key, str) for key in endpoint), f"Endpoint '{endpoint_name}' must contain only keys of type 'str' instead of {[type(key).__name__ for key in endpoint]}."
-            endpoint_existing_sets = [self.endpoint_required_sets[i].issubset(set(endpoint)) for i in range(len(self.model_names))]
-            assert any(endpoint_existing_sets), f"Endpoint '{endpoint_name}' must contain at least one set of keys from {self.endpoint_required_sets}."
-            expected_keys = set()
-            for i, exists in enumerate(endpoint_existing_sets):
-                if exists:
-                    expected_keys = expected_keys | self.endpoint_required_sets[i]
-            assert all(isinstance(endpoint[key], str) for key in endpoint), f"Endpoint '{endpoint_name}' must contain only values of type 'str' instead of {[type(endpoint[key]).__name__ for key in endpoint]}."
+        for endpoint_name, endpoint in api_endpoints.items():
+            assert isinstance(endpoint_name, str), \
+                f"Endpoint names must be of type 'str' instead of '{type(endpoint_name).__name__}'."
+            assert isinstance(endpoint, dict), \
+                f"Endpoint '{endpoint_name}' must be of type 'dict' instead of '{type(endpoint).__name__}'."
+            assert all(isinstance(key, str) for key in endpoint), \
+                f"Endpoint '{endpoint_name}' must contain only keys of type 'str'."
+
+            instances = {}
             for key in endpoint:
-                if key not in expected_keys:
-                    assert key in expected_keys, f"Endpoint '{endpoint_name}' contains unexpected key '{key}', but it must contain only full key sets from {self.endpoint_required_sets}."
-                if key.find('_key_type') > -1:
-                    assert endpoint[key] in self.endpoint_key_type_values, f"Endpoint '{endpoint_name}' must contain key '{key}' with value in {self.endpoint_key_type_values} instead of '{endpoint[key]}'."
+                m = self.re_pattern_any.match(key)
+                assert m, (
+                    f"Unexpected key '{key}' in endpoint '{endpoint_name}'. "
+                    f"Keys must match '<model>_<n?>_(url|key_type|key_value)'."
+                )
+                model = m.group("model")
+                assert model in self.model_names, (
+                    f"Unknown model '{model}' in key '{key}'. "
+                    f"Expected one of {self.model_names}."
+                )
+                idx_str = m.group("idx")
+                if idx_str:
+                    idx = int(idx_str)
+                    assert idx != 0, (
+                        f"Index for model '{model}' in key '{key}' must be >=1, not 0."
+                    )
+                else:
+                    idx = None
+                field = m.group("field")
+                instances.setdefault((model, idx), set()).add(field)
+
+            all_expected_keys = set()
+            for (model, idx), fields in instances.items():
+                suffix = "" if idx is None else f"_{idx}"
+
+                missing = {"url", "key_type", "key_value"} - fields
+                assert not missing, (
+                    f"Instance '{model}{suffix}' in endpoint '{endpoint_name}' "
+                    f"is missing fields: {sorted(missing)}."
+                )
+
+                expected_keys = {
+                    f"{model}{suffix}_url",
+                    f"{model}{suffix}_key_type",
+                    f"{model}{suffix}_key_value"
+                }
+                all_expected_keys |= expected_keys
+
+                for full_key in expected_keys:
+                    val = endpoint[full_key]
+                    assert isinstance(val, str), (
+                        f"Value of '{full_key}' must be str, not '{type(val).__name__}'."
+                    )
+                    if full_key.endswith("_key_type"):
+                        assert val in self.endpoint_key_type_values, (
+                            f"'{full_key}' must be one of {self.endpoint_key_type_values}, not '{val}'."
+                        )
+
+            extras = set(endpoint) - all_expected_keys
+            assert not extras, (
+                f"Endpoint '{endpoint_name}' contains unexpected keys: {sorted(extras)}. "
+                f"Only full sets of '<model>_<n?>_(url|key_type|key_value)' are allowed."
+            )
 
         self.api_endpoints = api_endpoints
         self.endpoint_probes = {}
@@ -131,23 +186,12 @@ class NimbroVision(Node):
 
         qos_profile = rclpy.qos.QoSProfile(reliability=rclpy.qos.ReliabilityPolicy.RELIABLE, history=rclpy.qos.HistoryPolicy.KEEP_LAST, depth=7)
 
-        # payload: images, prompts, min_confidence, overdetect_factor
-        self.srv_mmgd = self.create_service(GetNimbroVision, f"{self.node_namespace}/{self.node_name}/mmgroundingdino".replace("//", "/"), self.mmgroundingdino_callback, qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
-
-        self.cbg_sam2_realtime = MutuallyExclusiveCallbackGroup()
-        # payload: image, prompts (box_prompts{'object_id', 'bbox'}, points_prompts{'object_id', 'points', 'labels'})
-        self.srv_sam2_realtime_update = self.create_service(GetNimbroVision, f"{self.node_namespace}/{self.node_name}/sam2_realtime_update".replace("//", "/"), self.sam2_realtime_update_callback, qos_profile=qos_profile, callback_group=self.cbg_sam2_realtime)
-        # payload: images
-        self.srv_sam2_realtime_track = self.create_service(GetNimbroVision, f"{self.node_namespace}/{self.node_name}/sam2_realtime_track".replace("//", "/"), self.sam2_realtime_track_callback, qos_profile=qos_profile, callback_group=self.cbg_sam2_realtime)
-
-        # payload: images, temp, top_p, num_beams, max_new_tokens, max_batch_size, prompts ({'mask', 'bbox'}), query
-        self.srv_dam = self.create_service(GetNimbroVision, f"{self.node_namespace}/{self.node_name}/dam".replace("//", "/"), self.dam_callback, qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
-
-        # payload: images, prompts, inference_parameters(max_new_tokens max_batch_size, num_beams)
-        self.srv_kosmos2 = self.create_service(GetNimbroVision, f"{self.node_namespace}/{self.node_name}/kosmos2".replace("//", "/"), self.kosmos2_callback, qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
-
-        # payload: images, prompts, inference_parameters(max_new_tokens max_batch_size, num_beams)
-        self.srv_florence2 = self.create_service(GetNimbroVision, f"{self.node_namespace}/{self.node_name}/florence2".replace("//", "/"), self.florence2_callback, qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
+        self.srv_mmgd = self.create_service(GetNimbroVision, f"{self.node_namespace}/{self.node_name}/mmgroundingdino".replace("//", "/"), self.mmgroundingdino_callback, qos_profile=qos_profile, callback_group=ReentrantCallbackGroup())
+        self.srv_sam2_realtime_update = self.create_service(GetNimbroVision, f"{self.node_namespace}/{self.node_name}/sam2_realtime_update".replace("//", "/"), self.sam2_realtime_update_callback, qos_profile=qos_profile, callback_group=ReentrantCallbackGroup())
+        self.srv_sam2_realtime_track = self.create_service(GetNimbroVision, f"{self.node_namespace}/{self.node_name}/sam2_realtime_track".replace("//", "/"), self.sam2_realtime_track_callback, qos_profile=qos_profile, callback_group=ReentrantCallbackGroup())
+        self.srv_dam = self.create_service(GetNimbroVision, f"{self.node_namespace}/{self.node_name}/dam".replace("//", "/"), self.dam_callback, qos_profile=qos_profile, callback_group=ReentrantCallbackGroup())
+        self.srv_kosmos2 = self.create_service(GetNimbroVision, f"{self.node_namespace}/{self.node_name}/kosmos2".replace("//", "/"), self.kosmos2_callback, qos_profile=qos_profile, callback_group=ReentrantCallbackGroup())
+        self.srv_florence2 = self.create_service(GetNimbroVision, f"{self.node_namespace}/{self.node_name}/florence2".replace("//", "/"), self.florence2_callback, qos_profile=qos_profile, callback_group=ReentrantCallbackGroup())
 
         self.get_logger().info("Node started")
 
@@ -199,6 +243,12 @@ class NimbroVision(Node):
                     success, reason = self.probe_models_api(probe)
 
             if success:
+                if self.setup_finished:
+                    for model in self.model_locks:
+                        if self.model_locks[model].locked():
+                            self.get_logger().info(f"Waiting for model '{model}' to be released before updating endpoint")
+                            self.model_locks[model].acquire()
+
                 names_before = list(self.api_endpoints.keys())
                 dicts_before = copy.deepcopy(self.api_endpoints)
 
@@ -215,6 +265,15 @@ class NimbroVision(Node):
                 else:
                     self.get_logger().info(f"Created new API endpoint '{self.api_endpoint}'")
 
+                self.endpoint_models = {}
+                self.model_locks = {}
+                for endpoint_name in self.api_endpoints:
+                    self.endpoint_models[endpoint_name] = []
+                    for key in self.api_endpoints[endpoint_name]:
+                        if key.endswith("_url"):
+                            self.endpoint_models[endpoint_name].append(key[:-4])
+                            self.model_locks[key[:-4]] = threading.Lock()
+                self.get_logger().debug(f"Models: {self.endpoint_models}")
         else:
             return None, None
 
@@ -225,7 +284,7 @@ class NimbroVision(Node):
             json_object = json.loads(api_endpoint)
         except Exception:
             success = False
-            message = f"Value must be a name of an existing endpoints in {list(self.api_endpoints.keys())} or a valid JSON encoded dictionary containing a new endpoint."
+            message = f"Value must be a name of an existing endpoint in {list(self.api_endpoints.keys())} or a valid JSON encoded dictionary containing a new endpoint."
             json_object = None
         else:
             if not isinstance(json_object, dict):
@@ -233,7 +292,7 @@ class NimbroVision(Node):
                 message = f"JSON encoded endpoint must be of type 'dict' instead of '{type(json_object).__name__}'."
             elif not all(isinstance(key, str) for key in json_object):
                 success = False
-                message = f"JSON encoded endpoint must contain only values of type 'str' instead of {[type(key).__name__ for key in json_object]}."
+                message = f"JSON encoded endpoint must contain only keys of type 'str' instead of {[type(key).__name__ for key in json_object]}."
             elif 'name' not in json_object:
                 success = False
                 message = f"JSON encoded endpoint must contain key 'name' but it only contains keys {sorted(json_object.keys())}."
@@ -241,28 +300,59 @@ class NimbroVision(Node):
                 success = False
                 message = f"JSON encoded endpoint must contain only values of type 'str' instead of {[type(json_object[key]).__name__ for key in json_object]}."
             else:
-                endpoint_existing_sets = [self.endpoint_required_sets[i].issubset(set(json_object)) for i in range(len(self.model_names))]
-                if not any(endpoint_existing_sets):
-                    success = False
-                    message = f"JSON encoded endpoint must contain at least one set of keys from {self.endpoint_required_sets}."
-                else:
-                    expected_keys = set()
-                    for i, exists in enumerate(endpoint_existing_sets):
-                        if exists:
-                            expected_keys = expected_keys | self.endpoint_required_sets[i]
-                    for key in json_object:
-                        if key not in expected_keys and key != 'name':
+                keys = set(json_object.keys()) - {'name'}
+                instances = {}
+                for key in keys:
+                    match = self.re_pattern_any.match(key)
+                    if match is None:
+                        success = False
+                        message = f"Unexpected key '{key}' not matching pattern '<model>_<n?>_(url|key_type|key_value)'."
+                        break
+
+                    model = match.group("model")
+                    if model not in self.model_names:
+                        success = False
+                        message = f"Unknown model '{model}' in key '{key}'. Expected one of {self.model_names}."
+                        break
+
+                    idx_str = match.group("idx")
+                    if idx_str:
+                        idx = int(idx_str)
+                        if idx == 0:
                             success = False
-                            message = f"JSON encoded endpoint must contain only full key sets from {self.endpoint_required_sets} but in contains unexpected key '{key}'."
+                            message = f"Index for model '{model}' in key '{key}' must be >=1, not 0."
                             break
-                        elif key.find('_key_type') > -1:
-                            if json_object[key] not in self.endpoint_key_type_values:
-                                success = False
-                                message = f"JSON encoded endpoint must contain key '{key}' with value in {self.endpoint_key_type_values} instead of '{json_object[key]}'."
-                                break
                     else:
-                        success = True
-                        message = ""
+                        idx = None
+                    field = match.group("field")
+                    instances.setdefault(key[:-len(field) - 1], set()).add(field)
+                else:
+                    all_expected_keys = set()
+                    for instance, fields in instances.items():
+                        missing = {"url", "key_type", "key_value"} - fields
+                        if missing:
+                            success = False
+                            message = f"Instance '{instance}' is missing fields: {sorted(missing)}."
+                            break
+
+                        for field in ["url", "key_type", "key_value"]:
+                            full_key = f"{instance}_{field}" if "_" in instance else f"{instance}_{field}"
+                            if field == "key_type" and json_object[full_key] not in self.endpoint_key_type_values:
+                                success = False
+                                message = f"'{full_key}' must be one of {self.endpoint_key_type_values}, not '{json_object[full_key]}'."
+                                break
+                            all_expected_keys.add(full_key)
+                        else:
+                            continue
+                        break
+                    else:
+                        extras = keys - all_expected_keys
+                        if extras:
+                            success = False
+                            message = f"JSON encoded endpoint contains unexpected keys: {sorted(extras)}. Only full key sets per model instance are allowed."
+                        else:
+                            success = True
+                            message = ""
 
         return success, message, json_object
 
@@ -278,8 +368,10 @@ class NimbroVision(Node):
         success = True
         message = ""
 
-        for model in self.model_names:
-            if f"{model}_url" not in api_endpoint:
+        for key in api_endpoint:
+            if key[-4:] == "_url":
+                model = key[:-4]
+            else:
                 continue
 
             if api_endpoint[f"{model}_key_type"] == "environment":
@@ -294,7 +386,7 @@ class NimbroVision(Node):
 
             if success:
                 url = api_endpoint[f"{model}_url"]
-                self.get_logger().debug(f"Probing URL '{url}/model_flavors' of endpoint '{api_endpoint_name}' using key '{api_key}'")
+                self.get_logger().debug(f"Probing model '{model}' using URL '{url}/model_flavors' and key '{api_key}' of endpoint '{api_endpoint_name}'")
                 try:
                     response = requests.get(f"{url}/model_flavors", headers={"Authorization": f"Bearer {api_key}"})
                 except Exception as e:
@@ -318,7 +410,7 @@ class NimbroVision(Node):
                         self.endpoint_probes[api_endpoint_name]['stamp'] = time.time()
 
         if success:
-            self.get_logger().debug(f"{self.endpoint_probes}")
+            self.get_logger().debug(f"Probes: {self.endpoint_probes}")
         else:
             self.get_logger().error(message)
             if api_endpoint_name in self.endpoint_probes:
@@ -340,12 +432,22 @@ class NimbroVision(Node):
             else:
                 model = "sam2_realtime"
 
+        api_endpoint = copy.deepcopy(self.api_endpoints[self.api_endpoint])
+
+        # check if model is defnied in endpoint
+        if request.model_id > 0:
+            model = f"{model}_{request.model_id}"
+        if model not in self.endpoint_models[self.api_endpoint]:
+            response.success = False
+            response.message = f"Model '{model}' is not a known model: {self.endpoint_models[self.api_endpoint]}."
+
         # check if requested flavor is valid
-        if self.probe_api_connection and not sam_track:
-            if request.flavor not in self.endpoint_probes.get(self.api_endpoint, {}).get(f"{model}_flavors", []):
-                response.success = False
-                flavors = self.endpoint_probes[self.api_endpoint][f"{model}_flavors"]
-                response.message = f"Model flavor '{request.flavor}' is not in list of available model flavors {flavors}."
+        if response.success:
+            if self.probe_api_connection and not sam_track:
+                if request.flavor not in self.endpoint_probes.get(self.api_endpoint, {}).get(f"{model}_flavors", []):
+                    response.success = False
+                    flavors = self.endpoint_probes[self.api_endpoint][f"{model}_flavors"]
+                    response.message = f"Model flavor '{request.flavor}' is not in list of available model flavors {flavors}."
 
         # check request
         if response.success:
@@ -361,27 +463,33 @@ class NimbroVision(Node):
         # encode images if required
         if response.success:
             response.success = False
-            if isinstance(data.get('image'), str) and os.path.isfile(data['image']):
-                self.get_logger().debug(f"Encoding image '{data['image']}' into Base64")
-                try:
-                    with open(data['image'], "rb") as image_file:
-                        base64_image = base64.b64encode(image_file.read()).decode('utf-8')
-                except Exception as e:
-                    response.message = f"Failed to encode image file '{data['image']}' into Base64: {repr(e)}"
-                else:
-                    response.success = True
-                    data['image'] = base64_image
-            elif isinstance(data.get('images'), list) and all(isinstance(image, str) for image in data['images']):
-                for i, image_path in enumerate(data['images']):
-                    self.get_logger().debug(f"Encoding image '{image_path}' into Base64")
+            if isinstance(data.get('image'), str):
+                if os.path.isfile(data['image']):
+                    self.get_logger().debug(f"Encoding image '{data['image']}' into Base64")
                     try:
-                        with open(image_path, "rb") as image_file:
+                        with open(data['image'], "rb") as image_file:
                             base64_image = base64.b64encode(image_file.read()).decode('utf-8')
                     except Exception as e:
-                        response.message = f"Failed to encode image file '{image_path}' into Base64: {repr(e)}"
-                        break
+                        response.message = f"Failed to encode image file '{data['image']}' into Base64: {repr(e)}"
                     else:
-                        data['images'][i] = base64_image
+                        response.success = True
+                        data['image'] = base64_image
+                else:
+                    self.get_logger().debug("Assuming image is Base64 encoded")
+            elif isinstance(data.get('images'), list) and all(isinstance(image, str) for image in data['images']):
+                for i, image_path in enumerate(data['images']):
+                    if os.path.isfile(image_path):
+                        self.get_logger().debug(f"Encoding image '{image_path}' into Base64")
+                        try:
+                            with open(image_path, "rb") as image_file:
+                                base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+                        except Exception as e:
+                            response.message = f"Failed to encode image file '{image_path}' into Base64: {repr(e)}"
+                            break
+                        else:
+                            data['images'][i] = base64_image
+                    else:
+                        self.get_logger().debug(f"Assuming image '{i + 1}' of '{len(data['images'])}' is Base64 encoded")
                 else:
                     response.success = True
             else:
@@ -390,7 +498,6 @@ class NimbroVision(Node):
         # retrieve API key
         if response.success:
             response.success = False
-            api_endpoint = copy.deepcopy(self.api_endpoints[self.api_endpoint])
             url = api_endpoint[f"{model}_url"]
             if api_endpoint[f"{model}_key_type"] == "environment":
                 api_key = os.getenv(api_endpoint[f"{model}_key_value"])
@@ -405,10 +512,16 @@ class NimbroVision(Node):
             if api_key is not None:
                 self.get_logger().debug(f"Retrieved '{model}' key '{api_key}'")
 
-        if self.probe_model_state and not sam_track:
+        # lock model
+        if response.success:
+            if self.model_locks[model].locked():
+                self.get_logger().info(f"Waiting for model '{model}' to be released before using it")
+            self.model_locks[model].acquire()
 
-            # retrieve loaded state/flavor
-            if response.success:
+        # retrieve loaded state/flavor
+        if response.success:
+            if self.probe_model_state and not sam_track:
+
                 response.success = False
                 self.get_logger().debug(f"Requesting '{model}' endpoint status via URL '{url}/status'")
                 try:
@@ -419,7 +532,7 @@ class NimbroVision(Node):
                     if result.status_code == 200:
                         load = False
                         result = result.json()
-                        if result.get('model_family') != model:
+                        if model.find(result.get('model_family')) == -1:
                             response.message = f"Provided URL '{url}' hosts wrong model type '{result['model_family']}'."
                         else:
                             response.success = True
@@ -434,25 +547,25 @@ class NimbroVision(Node):
                     else:
                         response.message = f"Status request failed with status code '{result.status_code}': {result.text}"
 
-            # load requested model flavor if required
-            if response.success and load:
-                response.success = False
-                self.get_logger().debug(f"Requesting '{model}' endpoint via URL '{url}/load' to load model '{request.flavor}'")
-                try:
-                    result = requests.post(f"{url}/load", json={'flavor': request.flavor}, headers={"Authorization": f"Bearer {api_key}"})
-                except Exception as e:
-                    response.message = f"Failed to POST load request: {repr(e)}"
-                else:
-                    if result.status_code == 200:
-                        self.get_logger().info(f"Successfully loaded '{model}' model flavor '{request.flavor}': {result.text}")
-                        response.success = True
+                # load requested model flavor if required
+                if response.success and load:
+                    response.success = False
+                    self.get_logger().debug(f"Requesting '{model}' endpoint via URL '{url}/load' to load model '{request.flavor}'")
+                    try:
+                        result = requests.post(f"{url}/load", json={'flavor': request.flavor}, headers={"Authorization": f"Bearer {api_key}"})
+                    except Exception as e:
+                        response.message = f"Failed to POST load request: {repr(e)}"
                     else:
-                        response.message = f"Load request failed with status code '{result.status_code}': {result.text}"
+                        if result.status_code == 200:
+                            self.get_logger().info(f"Successfully loaded '{model}' model flavor '{request.flavor}': {result.text}")
+                            response.success = True
+                        else:
+                            response.message = f"Load request failed with status code '{result.status_code}': {result.text}"
 
         # post inference request
         if response.success:
             response.success = False
-            if model == "sam2_realtime" and not sam_track:
+            if (model == "sam2_realtime" or model == "sam2_realtime_2") and not sam_track:
                 suffix = "update"
             else:
                 suffix = "infer"
@@ -467,15 +580,19 @@ class NimbroVision(Node):
                     response.success = True
                     duration = time.perf_counter() - stamp_start
                     self.get_logger().debug(f"Successfully inferred '{model}' in '{duration:.3f}s': {response.result[:80]}{'...' if len(result.text) >= 80 else ''}")
-                    response.message = f"Successfully retrieved response after '{duration:.3f}s'."
+                    response.message = f"Successfully retrieved '{model}' {'inference' if suffix == 'infer' else 'update'} response after '{duration:.3f}s'."
                 else:
-                    response.message = f"Inference request failed with status code '{result.status_code}': {result.text}"
+                    response.message = f"Model '{model}' {'inference' if suffix == 'infer' else 'update'} failed with status code '{result.status_code}': {result.text}"
 
         # log
         if response.success:
             self.get_logger().info(response.message)
         else:
             self.get_logger().error(f"Error occurred while using '{model}': {response.message}")
+
+        # release model
+        if model in self.model_locks and self.model_locks[model].locked():
+            self.model_locks[model].release()
 
         self.get_logger().debug(f"handle_request('{model}'): end after '{time.perf_counter() - stamp_start:.3f}s'")
         return response
@@ -487,6 +604,8 @@ class NimbroVision(Node):
             response = self.handle_request('mmgroundingdino', request, response)
         except Exception as e:
             self.get_logger().error(f"{type(e).__name__}: {repr(e)}\n{traceback.format_exc()}")
+            response.success = False
+            response.message = f"Unexpected error: {repr(e)}"
         return response
 
     def sam2_realtime_update_callback(self, request, response):
@@ -494,6 +613,8 @@ class NimbroVision(Node):
             response = self.handle_request('sam2_realtime_update', request, response)
         except Exception as e:
             self.get_logger().error(f"{type(e).__name__}: {repr(e)}\n{traceback.format_exc()}")
+            response.success = False
+            response.message = f"Unexpected error: {repr(e)}"
         return response
 
     def sam2_realtime_track_callback(self, request, response):
@@ -501,6 +622,8 @@ class NimbroVision(Node):
             response = self.handle_request('sam2_realtime_track', request, response)
         except Exception as e:
             self.get_logger().error(f"{type(e).__name__}: {repr(e)}\n{traceback.format_exc()}")
+            response.success = False
+            response.message = f"Unexpected error: {repr(e)}"
         return response
 
     def dam_callback(self, request, response):
@@ -508,6 +631,8 @@ class NimbroVision(Node):
             response = self.handle_request('dam', request, response)
         except Exception as e:
             self.get_logger().error(f"{type(e).__name__}: {repr(e)}\n{traceback.format_exc()}")
+            response.success = False
+            response.message = f"Unexpected error: {repr(e)}"
         return response
 
     def kosmos2_callback(self, request, response):
@@ -515,6 +640,8 @@ class NimbroVision(Node):
             response = self.handle_request('kosmos2', request, response)
         except Exception as e:
             self.get_logger().error(f"{type(e).__name__}: {repr(e)}\n{traceback.format_exc()}")
+            response.success = False
+            response.message = f"Unexpected error: {repr(e)}"
         return response
 
     def florence2_callback(self, request, response):
@@ -522,6 +649,8 @@ class NimbroVision(Node):
             response = self.handle_request('florence2', request, response)
         except Exception as e:
             self.get_logger().error(f"{type(e).__name__}: {repr(e)}\n{traceback.format_exc()}")
+            response.success = False
+            response.message = f"Unexpected error: {repr(e)}"
         return response
 
 def main(args=None):

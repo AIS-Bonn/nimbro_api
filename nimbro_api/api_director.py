@@ -9,7 +9,7 @@ import datetime
 import threading
 
 import rclpy
-from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
 from rcl_interfaces.msg import ParameterType
 from rcl_interfaces.srv import GetParameters as rcl_GetParameters
 
@@ -84,12 +84,12 @@ class ApiDirector:
         self._cli_completions_get_status = self._node.create_client(CompletionsGetStatus, completions_multiplexer_name + "/get_status", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
         self._cli_completions_get_settings = self._node.create_client(CompletionsGetSettings, completions_multiplexer_name + "/get_settings", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
 
-        self._cli_mmgroundingdino = self._node.create_client(GetNimbroVision, nimbro_vision_name + "/mmgroundingdino", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
-        self._cli_sam2_realtime_update = self._node.create_client(GetNimbroVision, nimbro_vision_name + "/sam2_realtime_update", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
-        self._cli_sam2_realtime_track = self._node.create_client(GetNimbroVision, nimbro_vision_name + "/sam2_realtime_track", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
-        self._cli_dam = self._node.create_client(GetNimbroVision, nimbro_vision_name + "/dam", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
-        self._cli_kosmos2 = self._node.create_client(GetNimbroVision, nimbro_vision_name + "/kosmos2", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
-        self._cli_florence2 = self._node.create_client(GetNimbroVision, nimbro_vision_name + "/florence2", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
+        self._cli_mmgroundingdino = self._node.create_client(GetNimbroVision, nimbro_vision_name + "/mmgroundingdino", qos_profile=qos_profile, callback_group=ReentrantCallbackGroup())
+        self._cli_sam2_realtime_update = self._node.create_client(GetNimbroVision, nimbro_vision_name + "/sam2_realtime_update", qos_profile=qos_profile, callback_group=ReentrantCallbackGroup())
+        self._cli_sam2_realtime_track = self._node.create_client(GetNimbroVision, nimbro_vision_name + "/sam2_realtime_track", qos_profile=qos_profile, callback_group=ReentrantCallbackGroup())
+        self._cli_dam = self._node.create_client(GetNimbroVision, nimbro_vision_name + "/dam", qos_profile=qos_profile, callback_group=ReentrantCallbackGroup())
+        self._cli_kosmos2 = self._node.create_client(GetNimbroVision, nimbro_vision_name + "/kosmos2", qos_profile=qos_profile, callback_group=ReentrantCallbackGroup())
+        self._cli_florence2 = self._node.create_client(GetNimbroVision, nimbro_vision_name + "/florence2", qos_profile=qos_profile, callback_group=ReentrantCallbackGroup())
 
         self._cli_get_embeddings = self._node.create_client(GetEmbeddings, embeddings_name + "/get_embeddings", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
         self._cli_get_image = self._node.create_client(GetImage, images_name + "/get_image", qos_profile=qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
@@ -1141,7 +1141,7 @@ class ApiDirector:
 
     # NimbRoVision API
 
-    def mmgroundingdino(self, image, prompts, model_flavor="large", min_confidence=0.0, nms_iou=0.6, overdetect_factor=1.0, retry=False):
+    def mmgroundingdino(self, image, prompts, model_id=0, model_flavor="large", min_confidence=0.0, nms_iou=0.6, overdetect_factor=1.0, retry=False):
         batch = False
         if isinstance(image, list):
             batch = True
@@ -1168,6 +1168,11 @@ class ApiDirector:
             elif len(prompts) == 1:
                 all_lists = False
                 prompts = prompts[0]
+
+        if not isinstance(model_id, int):
+            return self._log_return("mmgroundingdino", False, f"Provided argument 'model_id' is of invalid type '{type(model_id).__name__}'. Supported type is 'int'.", None)
+        if model_id < 0:
+            return self._log_return("mmgroundingdino", False, f"Provided argument 'model_id' with invalid value '{type(model_id).__name__}'. Valid values are greater or equal zero.", None)
 
         if not isinstance(model_flavor, str):
             return self._log_return("mmgroundingdino", False, f"Provided argument 'model_flavor' is of invalid type '{type(model_flavor).__name__}'. Supported type is 'str'.", None)
@@ -1273,6 +1278,7 @@ class ApiDirector:
                 else:
                     try:
                         request = GetNimbroVision.Request()
+                        request.model_id = model_id
                         request.flavor = model_flavor
                         request.data = data
                         future = self._cli_mmgroundingdino.call_async(request)
@@ -1305,7 +1311,7 @@ class ApiDirector:
 
         return self._log_return("mmgroundingdino", success, message, result)
 
-    def sam2_realtime_update(self, image, prompts, model_flavor="large", retry=False):
+    def sam2_realtime_update(self, image, prompts, model_id=0, model_flavor="large", retry=False):
         if not isinstance(image, str):
             return self._log_return("sam2_realtime_update", False, f"Provided argument 'image' is of invalid type '{type(image).__name__}'. Supported type is 'str'.", None)
 
@@ -1317,6 +1323,11 @@ class ApiDirector:
             json.dumps(prompts)
         except Exception as e:
             return self._log_return("sam2_realtime_update", False, f"Provided argument 'prompts' cannot be parsed as JSON: {repr(e)}", None)
+
+        if not isinstance(model_id, int):
+            return self._log_return("sam2_realtime_update", False, f"Provided argument 'model_id' is of invalid type '{type(model_id).__name__}'. Supported type is 'int'.", None)
+        if model_id < 0:
+            return self._log_return("sam2_realtime_update", False, f"Provided argument 'model_id' with invalid value '{model_id}'. Valid values are greater or equal zero.", None)
 
         if not isinstance(model_flavor, str):
             return self._log_return("sam2_realtime_update", False, f"Provided argument 'model_flavor' is of invalid type '{type(model_flavor).__name__}'. Supported type is 'str'.", None)
@@ -1338,6 +1349,7 @@ class ApiDirector:
                 else:
                     try:
                         request = GetNimbroVision.Request()
+                        request.model_id = model_id
                         request.flavor = model_flavor
                         request.data = json.dumps({'image': image, 'prompts': prompts})
                         future = self._cli_sam2_realtime_update.call_async(request)
@@ -1369,7 +1381,7 @@ class ApiDirector:
 
         return self._log_return("sam2_realtime_update", success, message, result)
 
-    def sam2_realtime_track(self, image, retry=False):
+    def sam2_realtime_track(self, image, model_id=0, retry=False):
         batch = False
         if isinstance(image, list):
             batch = True
@@ -1381,6 +1393,11 @@ class ApiDirector:
 
         if not isinstance(image, str):
             return self._log_return("sam2_realtime_track", False, f"Provided argument 'image' is of invalid type '{type(image).__name__}'. Supported type is 'str'.", None)
+
+        if not isinstance(model_id, int):
+            return self._log_return("sam2_realtime_track", False, f"Provided argument 'model_id' is of invalid type '{type(model_id).__name__}'. Supported type is 'int'.", None)
+        if model_id < 0:
+            return self._log_return("sam2_realtime_track", False, f"Provided argument 'model_id' with invalid value '{type(model_id).__name__}'. Valid values are greater or equal zero.", None)
 
         if not isinstance(retry, bool):
             return self._log_return("sam2_realtime_track", False, f"Provided argument 'retry' is of invalid type '{type(retry).__name__}'. Supported type is 'bool'.", None)
@@ -1399,6 +1416,7 @@ class ApiDirector:
                 else:
                     try:
                         request = GetNimbroVision.Request()
+                        request.model_id = model_id
                         request.flavor = ""
                         request.data = json.dumps({'images': image} if isinstance(image, list) else {'images': [image]})
                         future = self._cli_sam2_realtime_track.call_async(request)
@@ -1431,7 +1449,7 @@ class ApiDirector:
 
         return self._log_return("sam2_realtime_track", success, message, result)
 
-    def dam(self, image, prompts, query="Describe the masked region in detail.", model_flavor="3B", temperature=0.2, top_p=0.5, num_beams=1, max_new_tokens=512, max_batch_size=32, retry=False):
+    def dam(self, image, prompts, query="Describe the masked region in detail.", model_id=0, model_flavor="3B", temperature=0.2, top_p=0.5, num_beams=1, max_new_tokens=512, max_batch_size=32, retry=False):
         # payload: images, temp, top_p, num_beams, max_new_tokens, max_batch_size, prompts ({'mask', 'bbox'}), query
 
         batch = False
@@ -1476,6 +1494,11 @@ class ApiDirector:
                 query = query[0]
         elif not isinstance(query, str):
             return self._log_return("dam", False, f"Provided argument 'query' is of invalid type '{type(query).__name__}'. Supported types are 'list' and 'str'.", None)
+
+        if not isinstance(model_id, int):
+            return self._log_return("dam", False, f"Provided argument 'model_id' is of invalid type '{type(model_id).__name__}'. Supported type is 'int'.", None)
+        if model_id < 0:
+            return self._log_return("dam", False, f"Provided argument 'model_id' with invalid value '{type(model_id).__name__}'. Valid values are greater or equal zero.", None)
 
         if not isinstance(model_flavor, str):
             return self._log_return("dam", False, f"Provided argument 'model_flavor' is of invalid type '{type(model_flavor).__name__}'. Supported type is 'str'.", None)
@@ -1581,6 +1604,7 @@ class ApiDirector:
                 else:
                     try:
                         request = GetNimbroVision.Request()
+                        request.model_id = model_id
                         request.flavor = model_flavor
                         request.data = data
                         future = self._cli_dam.call_async(request)
@@ -1613,7 +1637,7 @@ class ApiDirector:
 
         return self._log_return("dam", success, message, result)
 
-    def kosmos2(self, image, prompt, model_flavor="patch14-224", num_beams=3, max_new_tokens=1024, max_batch_size=6, retry=False):
+    def kosmos2(self, image, prompt, model_id=0, model_flavor="patch14-224", num_beams=3, max_new_tokens=1024, max_batch_size=6, retry=False):
         batch = False
         if isinstance(image, list):
             batch = True
@@ -1634,6 +1658,11 @@ class ApiDirector:
             return self._log_return("kosmos2", False, f"Provided argument 'prompt' is of invalid type '{type(prompt).__name__}'. Supported types are 'list' and 'str'.", None)
         else:
             prompt = [prompt]
+
+        if not isinstance(model_id, int):
+            return self._log_return("kosmos2", False, f"Provided argument 'model_id' is of invalid type '{type(model_id).__name__}'. Supported type is 'int'.", None)
+        if model_id < 0:
+            return self._log_return("kosmos2", False, f"Provided argument 'model_id' with invalid value '{type(model_id).__name__}'. Valid values are greater or equal zero.", None)
 
         if not isinstance(model_flavor, str):
             return self._log_return("kosmos2", False, f"Provided argument 'model_flavor' is of invalid type '{type(model_flavor).__name__}'. Supported type is 'str'.", None)
@@ -1711,6 +1740,7 @@ class ApiDirector:
                 else:
                     try:
                         request = GetNimbroVision.Request()
+                        request.model_id = model_id
                         request.flavor = model_flavor
                         request.data = data
                         future = self._cli_kosmos2.call_async(request)
@@ -1745,7 +1775,7 @@ class ApiDirector:
 
         return self._log_return("kosmos2", success, message, detections, captions)
 
-    def florence2(self, image, prompt, model_flavor="large", num_beams=3, max_new_tokens=1024, max_batch_size=6, retry=False):
+    def florence2(self, image, prompt, model_id=0, model_flavor="large", num_beams=3, max_new_tokens=1024, max_batch_size=6, retry=False):
         batch = False
         if isinstance(image, list):
             batch = True
@@ -1766,6 +1796,11 @@ class ApiDirector:
             return self._log_return("florence2", False, f"Provided argument 'prompt' is of invalid type '{type(prompt).__name__}'. Supported types are 'list' and 'dict'.", None)
         else:
             prompt = [prompt]
+
+        if not isinstance(model_id, int):
+            return self._log_return("florence2", False, f"Provided argument 'model_id' is of invalid type '{type(model_id).__name__}'. Supported type is 'int'.", None)
+        if model_id < 0:
+            return self._log_return("florence2", False, f"Provided argument 'model_id' with invalid value '{type(model_id).__name__}'. Valid values are greater or equal zero.", None)
 
         if not isinstance(model_flavor, str):
             return self._log_return("florence2", False, f"Provided argument 'model_flavor' is of invalid type '{type(model_flavor).__name__}'. Supported type is 'str'.", None)
@@ -1843,6 +1878,7 @@ class ApiDirector:
                 else:
                     try:
                         request = GetNimbroVision.Request()
+                        request.model_id = model_id
                         request.flavor = model_flavor
                         request.data = data
                         future = self._cli_florence2.call_async(request)
