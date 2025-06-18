@@ -30,5 +30,9 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        completions, embeddings, images, nimbro_vision, speech
+        completions,
+        embeddings,
+        images,
+        # nimbro_vision,
+        speech
     ])
