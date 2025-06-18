@@ -11,8 +11,8 @@ from nimbro_api.api_director import ApiDirector
 from nimbro_api.utils.node import start_and_spin_node
 
 class TestNode(Node):
-    def __init__(self):
-        super().__init__("nimbro_api_tests")
+    def __init__(self, name="nimbro_api_tests", *, context=None, **kwargs):
+        super().__init__(name, context=context, **kwargs)
         self.api_director = ApiDirector(self)
         self.timer_state = self.create_timer(0.0, self.state_machine, callback_group=MutuallyExclusiveCallbackGroup())
         rclpy.logging.set_logger_level(f"{self.get_namespace()}/{self.get_name()}".replace("//", "/")[1:].replace("/", "."), rclpy.logging.LoggingSeverity(10))

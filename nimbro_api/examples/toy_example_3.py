@@ -48,8 +48,8 @@ in_between_reasoning_texts = ["Given all available functions, which one should y
 
 class ToyExample(Node):
 
-    def __init__(self):
-        super().__init__(node_name)
+    def __init__(self, name=node_name, *, context=None, **kwargs):
+        super().__init__(name, context=context, **kwargs)
         self.node_name = self.get_name()
         self.node_namespace = self.get_namespace()
 

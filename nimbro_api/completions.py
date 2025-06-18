@@ -87,8 +87,8 @@ api_endpoints = {
 
 class Completions(Node):
 
-    def __init__(self):
-        super().__init__(node_name)
+    def __init__(self, name=node_name, *, context=None, **kwargs):
+        super().__init__(name, context=context, **kwargs)
         self.node_name = self.get_name()
         self.node_namespace = self.get_namespace()
 
