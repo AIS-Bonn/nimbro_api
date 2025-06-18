@@ -475,6 +475,7 @@ class NimbroVision(Node):
                         response.success = True
                         data['image'] = base64_image
                 else:
+                    response.success = True
                     self.get_logger().debug("Assuming image is Base64 encoded")
             elif isinstance(data.get('images'), list) and all(isinstance(image, str) for image in data['images']):
                 for i, image_path in enumerate(data['images']):
