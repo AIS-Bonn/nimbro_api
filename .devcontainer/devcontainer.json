@@ -1,7 +1,8 @@
 {
     "name": "nimbro Dev Container",
     "build": {
-        "dockerfile": "Dockerfile",
+        "dockerfile": "Dockerfile_jazzy",
+        // "dockerfile": "Dockerfile_humble",
         "context": "../.."
     },
     "customizations": {
@@ -20,5 +21,13 @@
     "remoteUser": "root",
     "runArgs": ["--network=host"],
     "workspaceMount": "source=${localWorkspaceFolder},target=/colcon_ws/src/nimbro_api,type=bind,consistency=consistent",
-    "workspaceFolder": "/colcon_ws"
+    "workspaceFolder": "/colcon_ws",
+    "containerEnv": {
+        "MISTRAL_API_KEY": "${localEnv:MISTRAL_API_KEY}",
+        "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}",
+        "AIS_API_KEY": "${localEnv:AIS_API_KEY}",
+        "VLLM_API_KEY": "${localEnv:VLLM_API_KEY}",
+        "OPENROUTER_API_KEY": "${localEnv:OPENROUTER_API_KEY}",
+        "NIMBRO_VISION_API_KEY": "${localEnv:NIMBRO_VISION_API_KEY}"
+    }
 }
