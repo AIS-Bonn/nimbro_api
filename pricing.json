@@ -1,4 +1,75 @@
 {
+    "gpt-4o": {
+        "tokens_input_uncached": 2.5,
+        "tokens_input_cached": 1.25,
+        "tokens_output": 10.0
+    },
+    "gpt-4o-2024-08-06": {
+        "tokens_input_uncached": 2.5,
+        "tokens_input_cached": 1.25,
+        "tokens_output": 10.0
+    },
+    "gpt-4o-2024-11-20": {
+        "tokens_input_uncached": 2.5,
+        "tokens_input_cached": 1.25,
+        "tokens_output": 10.0
+    },
+    "gpt-4o-mini": {
+        "tokens_input_uncached": 0.15,
+        "tokens_input_cached": 0.075,
+        "tokens_output": 0.6
+    },
+    "gpt-4o-mini-2024-07-18": {
+        "tokens_input_uncached": 0.15,
+        "tokens_input_cached": 0.075,
+        "tokens_output": 0.6
+    },
+    "gpt-4.1": {
+        "tokens_input_uncached": 2.0,
+        "tokens_input_cached": 0.5,
+        "tokens_output": 8.0
+    },
+    "gpt-4.1-2025-04-14": {
+        "tokens_input_uncached": 2.0,
+        "tokens_input_cached": 0.5,
+        "tokens_output": 8.0
+    },
+    "gpt-4.1-mini": {
+        "tokens_input_uncached": 0.40,
+        "tokens_input_cached": 0.1,
+        "tokens_output": 1.6
+    },
+    "gpt-4.1-mini-2025-04-14": {
+        "tokens_input_uncached": 0.40,
+        "tokens_input_cached": 0.1,
+        "tokens_output": 1.6
+    },
+    "gpt-4.1-nano": {
+        "tokens_input_uncached": 0.10,
+        "tokens_input_cached": 0.025,
+        "tokens_output": 0.4
+    },
+    "gpt-4.1-nano-2025-04-14": {
+        "tokens_input_uncached": 0.10,
+        "tokens_input_cached": 0.025,
+        "tokens_output": 0.4
+    },
+    "anthropic/claude-sonnet-4": {
+        "tokens_input_uncached": 3.0,
+        "tokens_output": 15.0
+    },
+    "google/gemini-2.5-flash-preview-05-20": {
+        "tokens_input_uncached": 0.15,
+        "tokens_output": 0.60
+    },
+    "google/gemini-2.5-pro-preview": {
+        "tokens_input_uncached": 1.25,
+        "tokens_output": 10.0
+    },
+    "arcee-ai/spotlight": {
+        "tokens_input_uncached": 0.18,
+        "tokens_output": 0.18
+    },
     "text-embedding-3-small": {
         "tokens_input_uncached": 0.02
     },
@@ -14,11 +85,6 @@
     "gpt-4-1106-preview": {
         "tokens_input_uncached": 10.0,
         "tokens_output": 30.0
-    },
-    "gpt-4o-2024-11-20": {
-        "tokens_input_uncached": 2.5,
-        "tokens_input_cached": 1.25,
-        "tokens_output": 1.25
     },
     "o1-mini": {
         "tokens_input_uncached": 3.0,
@@ -52,16 +118,6 @@
         "tokens_input_uncached": 30.0,
         "tokens_output": 60.0
     },
-    "gpt-4o-mini": {
-        "tokens_input_uncached": 0.15,
-        "tokens_input_cached": 0.075,
-        "tokens_output": 0.6
-    },
-    "gpt-4o-mini-2024-07-18": {
-        "tokens_input_uncached": 0.15,
-        "tokens_input_cached": 0.075,
-        "tokens_output": 0.6
-    },
     "gpt-3.5-turbo": {
         "tokens_input_uncached": 0.5,
         "tokens_input_cached": 1.5
@@ -73,16 +129,6 @@
     "gpt-4-turbo": {
         "tokens_input_uncached": 10.0,
         "tokens_output": 30.0
-    },
-    "gpt-4o": {
-        "tokens_input_uncached": 2.5,
-        "tokens_input_cached": 1.25,
-        "tokens_output": 10.0
-    },
-    "gpt-4o-2024-08-06": {
-        "tokens_input_uncached": 2.5,
-        "tokens_input_cached": 1.25,
-        "tokens_output": 10.0
     },
     "gpt-4-turbo-2024-04-09": {
         "tokens_input_uncached": 10.0,
