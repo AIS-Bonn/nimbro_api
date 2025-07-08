@@ -21,18 +21,18 @@ setup(
     license='BSD-3-Clause',
     entry_points={
         'console_scripts': [
-            'completions = nimbro_api.completions:main',
-            'completions_multiplexer = nimbro_api.completions_multiplexer:main',
-            'embeddings = nimbro_api.embeddings:main',
-            'images = nimbro_api.images:main',
-            'nimbro_vision = nimbro_api.nimbro_vision:main',
-            'speech = nimbro_api.speech:main',
-            'usage_monitor = nimbro_api.usage_monitor:main',
-            'test = nimbro_api.utils.test:main',
-            'toy_example_1 = nimbro_api.examples.toy_example_1:main',
-            'toy_example_2 = nimbro_api.examples.toy_example_2:main',
-            'toy_example_3 = nimbro_api.examples.toy_example_3:main',
-            'toy_example_4 = nimbro_api.examples.toy_example_4:main'
+            f"completions = {package_name}.completions:main",
+            f"completions_multiplexer = {package_name}.completions_multiplexer:main",
+            f"embeddings = {package_name}.embeddings:main",
+            f"images = {package_name}.images:main",
+            f"nimbro_vision = {package_name}.nimbro_vision:main",
+            f"speech = {package_name}.speech:main",
+            f"usage_monitor = {package_name}.usage_monitor:main",
+            f"test = {package_name}.utils.test:main",
+            f"toy_example_1 = {package_name}.examples.toy_example_1:main",
+            f"toy_example_2 = {package_name}.examples.toy_example_2:main",
+            f"toy_example_3 = {package_name}.examples.toy_example_3:main",
+            f"toy_example_4 = {package_name}.examples.toy_example_4:main"
         ]
     }
 )

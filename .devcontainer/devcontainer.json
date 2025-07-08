@@ -23,10 +23,10 @@
     "workspaceMount": "source=${localWorkspaceFolder},target=/colcon_ws/src/nimbro_api,type=bind,consistency=consistent",
     "workspaceFolder": "/colcon_ws",
     "containerEnv": {
-        "MISTRAL_API_KEY": "${localEnv:MISTRAL_API_KEY}",
         "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}",
-        "VLLM_API_KEY": "${localEnv:VLLM_API_KEY}",
+        "MISTRAL_API_KEY": "${localEnv:MISTRAL_API_KEY}",
         "OPENROUTER_API_KEY": "${localEnv:OPENROUTER_API_KEY}",
+        "VLLM_API_KEY": "${localEnv:VLLM_API_KEY}",
         "NIMBRO_VISION_API_KEY": "${localEnv:NIMBRO_VISION_API_KEY}"
     }
 }

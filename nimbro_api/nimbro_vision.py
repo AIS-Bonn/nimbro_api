@@ -566,7 +566,7 @@ class NimbroVision(Node):
         # post inference request
         if response.success:
             response.success = False
-            if (model == "sam2_realtime" or model == "sam2_realtime_2") and not sam_track:
+            if model == "sam2_realtime" and not sam_track:
                 suffix = "update"
             else:
                 suffix = "infer"
