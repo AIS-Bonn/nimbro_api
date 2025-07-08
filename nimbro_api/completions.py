@@ -37,6 +37,7 @@ model_top_p = 1.0
 model_max_tokens = 1000
 model_presence_penalty = 0.0
 model_frequency_penalty = 0.0
+model_reasoning_effort = "none"
 
 stream_completion = True
 normalize_text_response = True
@@ -219,6 +220,15 @@ class Completions(Node):
         self.declare_parameter(descriptor.name, model_frequency_penalty, descriptor)
 
         descriptor = ParameterDescriptor()
+        descriptor.name = "model_reasoning_effort"
+        descriptor.type = ParameterType.PARAMETER_STRING
+        valid_values = ["", "none", "low", "medium", "high"]
+        descriptor.description = f"Reasoning effort spent before generating the completion in {valid_values}."
+        descriptor.read_only = False
+        self.parameter_descriptors.append(descriptor)
+        self.declare_parameter(descriptor.name, model_reasoning_effort, descriptor)
+
+        descriptor = ParameterDescriptor()
         descriptor.name = "stream_completion"
         descriptor.type = ParameterType.PARAMETER_BOOL
         descriptor.description = "Using streaming to receive completions."
@@ -295,6 +305,7 @@ class Completions(Node):
         self.model_top_p_default = self.model_top_p
         self.model_max_tokens_default = self.model_max_tokens
         self.model_presence_penalty_default = self.model_presence_penalty
+        self.model_reasoning_effort_default = self.model_reasoning_effort
         self.model_frequency_penalty_default = self.model_frequency_penalty
         self.stream_completion_default = self.stream_completion
         self.normalize_text_response_default = self.normalize_text_response
@@ -418,6 +429,14 @@ class Completions(Node):
 
         elif parameter.name == "model_presence_penalty":
             self.model_presence_penalty = parameter.value
+
+        elif parameter.name == "model_reasoning_effort":
+            valid_values = ["", "none", "low", "medium", "high"]
+            if parameter.value in valid_values:
+                self.model_reasoning_effort = parameter.value
+            else:
+                success = False
+                reason = f"Reasoning effort '{parameter.value}' is not in list of unsupported values {valid_values}."
 
         elif parameter.name == "model_frequency_penalty":
             self.model_frequency_penalty = parameter.value
@@ -549,7 +568,7 @@ class Completions(Node):
                         awaited_tool_responses.append(call['id'])
 
         num_duplicates = len(all_ids) - len(set(all_ids))
-        if num_duplicates > 0:
+        if num_duplicates > 0: # this seems to be intended with OpenRouter
             self.get_logger().warn(f"The message history contains '{num_duplicates}' tool call{'s' if num_duplicates != 1 else ''} with an ID of another tool call")
 
         self.awaited_tool_responses = awaited_tool_responses
@@ -968,6 +987,16 @@ class Completions(Node):
                                     self.get_logger().warn(f"Modifying response to conform to JSON. Original response:\n\n{text}\n")
                                     text = json.dumps(dict_extracted, indent=4)
 
+                        # extract tool call arguments
+                        for i in range(len(tool_calls)):
+                            try:
+                                parameters = json.loads(tool_calls[i]['arguments'])
+                            except Exception as e:
+                                parameters = extract_json_from_text(tool_calls[i]['arguments'])
+                                if parameters is not None:
+                                    self.get_logger().warn(f"Extracted arguments '{parameters}' after failure to parse raw arguments '{tool_calls[i]['arguments']}' as JSON: {repr(e)}")
+                                    tool_calls[i]['arguments'] = json.dumps(parameters)
+
                         self.add_response_to_context(text, tool_calls)
                         break
                 else:
@@ -994,6 +1023,25 @@ class Completions(Node):
                     break
 
         return text, tool_calls, is_valid, corrections, message, None
+
+    def tools_to_response_format(self, tools):
+        schemas = []
+        for tool in tools:
+            fn = tool["function"]
+            name = fn["name"]
+            schema = fn["parameters"]
+            schema["additionalProperties"] = False
+
+            schemas.append({
+                "name": name,
+                "strict": True,
+                "schema": schema
+            })
+
+        return {
+            "type": "json_schema",
+            "json_schema": schemas[0] if len(schemas) == 1 else schemas
+        }
 
     def set_tool_choice(self, request):
         if self.api_endpoints[self.api_endpoint]['api_flavor'] == "openai":
@@ -1022,7 +1070,6 @@ class Completions(Node):
                 self.tool_choice = "none"
             elif request.response_type == "always":
                 self.response_format = {"type": "text"}
-                # self.tool_choice = "required"
                 self.tool_choice = "any"
             elif request.response_type == "auto":
                 self.response_format = {"type": "text"}
@@ -1041,6 +1088,8 @@ class Completions(Node):
             elif request.response_type == "always":
                 self.response_format = {"type": "text"}
                 self.tool_choice = "required"
+                # self.response_format = self.tools_to_response_format(self.tools)
+                # self.tool_choice = "auto"
             elif request.response_type == "auto":
                 self.response_format = {"type": "text"}
                 self.tool_choice = "auto"
@@ -1053,22 +1102,19 @@ class Completions(Node):
                 self.response_format = {"type": "text"}
                 self.tool_choice = "none"
             elif request.response_type == "json":
-                # self.response_format = {"type": "json_object"}
-                self.response_format = {"type": "text"} # Because the actual JSON-mode in VLLM sucks AFAIK. This still triggers correction for JSON decode errors and deactivates normalization.
+                self.response_format = {"type": "json_object"}
+                # self.response_format = {"type": "text"} # set this to deactivate JSON-mode; response with invalid JSON will still trigger self-correcion.
                 self.tool_choice = "none"
             elif request.response_type == "always":
                 self.response_format = {"type": "text"}
-                self.tool_choice = "auto"
+                self.tool_choice = "auto" # wait until v1 engines supports 'required'
                 self.get_logger().warn(f"Tool choice '{request.response_type}' is not available for api_flavor '{self.api_endpoints[self.api_endpoint]['api_flavor']}', using '{self.tool_choice}' instead")
             elif request.response_type == "auto":
                 self.response_format = {"type": "text"}
                 self.tool_choice = "auto"
             else:
                 self.response_format = {"type": "text"}
-                # self.tool_choice = {"type": "function", "function": {"name": request.response_type}}
-                request.response_type = "always"
-                self.tool_choice = "auto"
-                self.get_logger().warn(f"Tool choice '{request.response_type}' is not available for api_flavor '{self.api_endpoints[self.api_endpoint]['api_flavor']}', using '{self.tool_choice}' instead")
+                self.tool_choice = {"type": "function", "function": {"name": request.response_type}}
 
         else:
             self.get_logger().fatal(f"Undefined API flavor '{self.api_endpoints[self.api_endpoint]['api_flavor']}'")
@@ -1147,9 +1193,12 @@ class Completions(Node):
                     'n': 1,
                     'stream': stream
                 }
+                if self.model_reasoning_effort not in ["", "none"]:
+                    data['reasoning_effort'] = self.model_reasoning_effort
                 if self.tools is not None:
                     data['tool_choice'] = self.tool_choice
-                    data['parallel_tool_calls'] = False
+                    if self.model_name[0] != "o":
+                        data['parallel_tool_calls'] = self.max_tool_calls_per_response > 1
                 if stream is True:
                     data['stream_options'] = {'include_usage': True}
 
@@ -1167,7 +1216,7 @@ class Completions(Node):
                     'stream': stream
                 }
 
-            elif self.api_endpoints[self.api_endpoint]['api_flavor'] in ["vllm", "openrouter"]:
+            elif self.api_endpoints[self.api_endpoint]['api_flavor'] == "openrouter":
                 data = {
                     'model': self.model_name,
                     'messages': messages,
@@ -1181,10 +1230,39 @@ class Completions(Node):
                     'n': 1,
                     'stream': stream
                 }
+                if self.model_reasoning_effort not in ["", "none"]:
+                    data['reasoning'] = {
+                        'effort': self.model_reasoning_effort,
+                        'exclude': False
+                    }
                 if self.tools is not None:
                     data['tool_choice'] = self.tool_choice
                 if stream is True:
                     data['stream_options'] = {'include_usage': True}
+
+            elif self.api_endpoints[self.api_endpoint]['api_flavor'] == "vllm":
+                data = {
+                    'model': self.model_name,
+                    'messages': messages,
+                    'tools': self.tools,
+                    'temperature': self.model_temperatur,
+                    'top_p': self.model_top_p,
+                    'max_tokens': self.model_max_tokens, # test
+                    'presence_penalty': self.model_presence_penalty,
+                    'frequency_penalty': self.model_frequency_penalty,
+                    'response_format': self.response_format,
+                    'n': 1,
+                    'stream': stream,
+                    'chat_template_kwargs': {'enable_thinking': self.model_reasoning_effort not in ["", "none"]}
+                }
+                if self.model_reasoning_effort in ["low", "medium", "high"]:
+                    self.get_logger().warn(f"vLLM does currently not support reasoning effort '{self.model_reasoning_effort}', but only activating (used) or deactivating reasoning")
+                if self.tools is not None:
+                    data['tool_choice'] = self.tool_choice
+                    data['parallel_tool_calls'] = self.max_tool_calls_per_response > 1
+                if stream is True:
+                    data['stream_options'] = {'include_usage': True}
+
             else:
                 message = f"Error while sending prompt (Undefined API flavor '{self.api_endpoints[self.api_endpoint]['api_flavor']}')."
                 self.pipe[1].send({'code': "ERROR", 'content': message})
@@ -1422,7 +1500,7 @@ class Completions(Node):
                         if len(tool_calls) == chunk['tool_calls'][i]['index']:
                             tool_calls.append({"id": chunk['tool_calls'][i]['id'], "name": chunk['tool_calls'][i]['function']['name'], 'arguments': ""})
                         else:
-                            raise Exception(f"Expected tool_calls elements field 'index' to have the value '{len(tool_calls)}' instead of '{chunk['tool_calls'][i]['index']}'")
+                            raise Exception(f"Expected tool_calls elements field 'index' to be set to '{len(tool_calls)}' instead of '{chunk['tool_calls'][i]['index']}'")
                     if 'arguments' in chunk['tool_calls'][i]['function']:
                         if chunk['tool_calls'][i]['index'] < len(tool_calls):
                             tool_calls[chunk['tool_calls'][i]['index']]['arguments'] += chunk['tool_calls'][i]['function']['arguments']
@@ -1437,6 +1515,7 @@ class Completions(Node):
 
     def extract_tool_call_from_text(self, text, tool_calls):
         first_text_call = extract_json_from_text(text, first_over_longest=True)
+        self.get_logger().warn(f"{first_text_call}")
         if first_text_call is not None:
             if 'name' in first_text_call and 'arguments' in first_text_call:
                 self.get_logger().warn("Detected tool call in text output while expecting tool call and not having received one, moving it to tool calls and erasing text")
@@ -1459,7 +1538,7 @@ class Completions(Node):
     def clean_tool_call_names(self, tool_calls):
         # I experienced openai referring to undefined functions names in a way that includes special characters (e.g. 'assistant.tell_joke' instead of 'tell_joke').
         # Responding to such a function would cause the completion to respond with 'invalid function name' due to the illegal use of special characters.
-        # So, we remove special characters here, establish a legal function name, and then let the self correction routines check validity w.r.t. the defined JSON scheme.
+        # So, we remove special characters here, establish a legal function name, and then let the self correction routines check validity w.r.t. the defined JSON Schema.
         for i, call in enumerate(tool_calls):
             if not re.match('^[a-zA-Z0-9_-]{1,64}$', call["name"]):
                 tool_calls[i]["name"] = re.sub(r"[^a-zA-Z0-9_-]", "", call["name"])
@@ -1570,13 +1649,13 @@ class Completions(Node):
                     else:
                         correction_response[i]["content"] = "Your response must contain " + ("at least one" if self.max_tool_calls_per_response > 1 else "a") + " tool call. Please try again!"
 
-        # error case: function call violates JSON scheme
+        # error case: function call violates JSON Schema
         for i, call in enumerate(tool_calls):
             for j in range(len(correction_response)):
                 if 'tool_call_id' in correction_response[j]:
                     if call["id"] == correction_response[j]['tool_call_id']:
                         if correction_response[j]["content"] == tool_call_is_valid_default_correction:
-                            valid, reason, parameters = self.check_tool_call_validity([call["name"], call["arguments"]])
+                            valid, reason = self.check_tool_call_validity([call["name"], call["arguments"]])
                             if not valid:
                                 is_valid = False
                                 correction_response[j]["content"] = reason
@@ -1601,7 +1680,6 @@ class Completions(Node):
     def check_tool_call_validity(self, tool_call):
         valid = True
         message = ""
-        parameters = {}
 
         if not isinstance(tool_call, list):
             valid = False
@@ -1674,7 +1752,7 @@ class Completions(Node):
         else:
             self.get_logger().error(f"Function call '{tool_call}' is not valid ({message[:-1]})")
 
-        return valid, message, parameters
+        return valid, message
 
     def post_process_completion(self, request, text, tool_calls, is_valid, corrections, message):
         if not is_valid:
@@ -1816,6 +1894,7 @@ class Completions(Node):
                 self.get_logger().info("Tools deactivated")
 
         else:
+            used_names = []
             tools = []
 
             for i in range(len(request.tools)):
@@ -1827,39 +1906,58 @@ class Completions(Node):
                     self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
                     break
 
-                if set(tools[-1].keys()) != {'parameters', 'name', 'description'}:
+                keys_required = {'name', 'description', 'parameters'}
+                keys_optional = {'strict'}
+                if not (set(tools[-1].keys()).issubset(keys_required | keys_optional) and keys_required.issubset(tools[-1])):
                     response.success = False
-                    response.message = f"Function '{i}' does not satisfy the required format - The top level keys must be 'parameters', 'name', and 'description' and not '{tools[-1].keys()}'."
+                    response.message = f"Function '{i}' does not satisfy the required format - The top level keys must be {list(keys_required)} and optionally {list(keys_optional)} instead of {list(tools[-1].keys())}."
                     self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
                     break
 
                 if not isinstance(tools[-1]['name'], str):
                     response.success = False
-                    response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'name' must be of type 'str' and not '{type(tools[-1]['name']).__name__}'."
+                    response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'name' must be of type 'str' instead of '{type(tools[-1]['name']).__name__}'."
                     self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
                     break
+
+                if tools[-1]['name'] in used_names:
+                    response.success = False
+                    response.message = f"All functions must feature a unique name - The name '{tools[-1]['name']}' is featured more than once."
+                    self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
+                    break
+
+                used_names.append(tools[-1]['name'])
 
                 if not isinstance(tools[-1]['description'], str):
                     response.success = False
-                    response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'description' must be of type 'str' and not '{type(tools[-1]['description']).__name__}'."
+                    response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'description' must be of type 'str' instead of '{type(tools[-1]['description']).__name__}'."
                     self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
                     break
+
+                if 'strict' in tools[-1]:
+                    if not isinstance(tools[-1]['strict'], bool):
+                        response.success = False
+                        response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'strict' must be of type 'bool' instead of '{type(tools[-1]['strict']).__name__}'."
+                        self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
+                        break
 
                 if not isinstance(tools[-1]['parameters'], dict):
                     response.success = False
-                    response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'parameters' must be of type 'dict' and not '{type(tools[-1]['parameters']).__name__}'."
+                    response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'parameters' must be of type 'dict' instead of '{type(tools[-1]['parameters']).__name__}'."
                     self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
                     break
 
-                if set(tools[-1]['parameters']) != {'type', 'properties', 'required'} and set(tools[-1]['parameters']) != {'type', 'properties'}:
+                keys_required = {'type', 'properties'}
+                keys_optional = {'required', 'additionalProperties'}
+                if not set(tools[-1]['parameters'].keys()).issubset(keys_required | keys_optional) and keys_required.issubset(tools[-1]['parameters']):
                     response.success = False
-                    response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'parameters' must contain the keys 'type', 'properties', and optionally 'required'."
+                    response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'parameters' must contain the keys {list(keys_required)} and optionally {list(keys_optional)}."
                     self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
                     break
 
                 if tools[-1]['parameters']['type'] != "object":
                     response.success = False
-                    response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'parameters'::'type' must have the value 'object'."
+                    response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'parameters'::'type' must be set to 'object'."
                     self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
                     break
 
@@ -1867,7 +1965,7 @@ class Completions(Node):
 
                     if not isinstance(tools[-1]['parameters']['properties'][p], dict):
                         response.success = False
-                        response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'properties'::'{p}' must be of type 'dict' and not '{type(tools[-1]['parameters']['properties'][p]).__name__}'."
+                        response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'properties'::'{p}' must be of type 'dict' instead of '{type(tools[-1]['parameters']['properties'][p]).__name__}'."
                         self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
                         break
 
@@ -1879,13 +1977,14 @@ class Completions(Node):
 
                     if not isinstance(tools[-1]['parameters']['properties'][p]['description'], str):
                         response.success = False
-                        response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'properties'::'{p}'::'description' must be of type 'str' and not '{type(tools[-1]['parameters']['properties'][p]['description']).__name__}'."
+                        response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'properties'::'{p}'::'description' must be of type 'str' instead of '{type(tools[-1]['parameters']['properties'][p]['description']).__name__}'."
                         self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
                         break
 
-                    if not tools[-1]['parameters']['properties'][p]['type'] in ['boolean', 'string', 'number']:
+                    valid_types = ['boolean', 'string', 'number', 'null']
+                    if not tools[-1]['parameters']['properties'][p]['type'] in valid_types:
                         response.success = False
-                        response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'properties'::'{p}'::'type' must be of type 'boolean','string', or 'number'."
+                        response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'properties'::'{p}'::'type' must be in {valid_types}."
                         self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
                         break
 
@@ -1907,7 +2006,7 @@ class Completions(Node):
                         for e in tools[-1]['parameters']['properties'][p]['enum']:
                             if not isinstance(e, t):
                                 response.success = False
-                                response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'properties'::'{p}'::'enum' must only contain elements of type '{t}' and not '{type(e).__name__}'."
+                                response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'properties'::'{p}'::'enum' must only contain elements of type '{t}' instead of '{type(e).__name__}'."
                                 self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
                                 break
 
@@ -1922,13 +2021,31 @@ class Completions(Node):
 
                         if not isinstance(r, str):
                             response.success = False
-                            response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - All elements in list 'required' must by of type 'str' and not '{type(r).__name__}'."
+                            response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - All elements in list 'required' must by of type 'str' instead of '{type(r).__name__}'."
                             self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
                             break
 
                         if r not in tools[-1]['parameters']['properties'].keys():
                             response.success = False
                             response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - All elements in list 'required' must refer to an element in 'properties', unlike '{r}'."
+                            self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
+                            break
+
+                if 'strict' in tools[-1]:
+                    if tools[-1]['strict'] is True:
+                        if 'additionalProperties' not in tools[-1]['parameters']:
+                            response.success = False
+                            response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'parameters::additionalProperties' must be supplied when 'strict' is set to 'True'."
+                            self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
+                            break
+                        elif not isinstance(tools[-1]['parameters']['additionalProperties'], bool):
+                            response.success = False
+                            response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'parameters::additionalProperties' must be of type 'bool' instead of '{type(tools[-1]['parameters']['additionalProperties']).__name__}'."
+                            self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
+                            break
+                        elif tools[-1]['parameters']['additionalProperties'] is True:
+                            response.success = False
+                            response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'parameters::additionalProperties' must be set to 'False' when 'strict' is set to 'True'."
                             self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
                             break
 

@@ -123,6 +123,7 @@ class CompletionsMultiplexer(Node):
             'model_max_tokens': ParameterType.PARAMETER_INTEGER,
             'model_presence_penalty': ParameterType.PARAMETER_DOUBLE,
             'model_frequency_penalty': ParameterType.PARAMETER_DOUBLE,
+            'model_reasoning_effort': ParameterType.PARAMETER_STRING,
             'stream_completion': ParameterType.PARAMETER_BOOL,
             'normalize_text_response': ParameterType.PARAMETER_BOOL,
             'max_tool_calls_per_response': ParameterType.PARAMETER_INTEGER,
