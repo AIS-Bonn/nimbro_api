@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import re
+import copy
 import json
 import time
 import random
@@ -417,6 +418,7 @@ class ApiDirector:
             return self._log_return(None, False, f"Provided argument 'completions_id' is of invalid type '{type(completions_id).__name__}'. Supported type is 'str'.", None)
 
         if isinstance(parameter_names, str):
+            parameter_names = copy.copy(parameter_names)
             parameter_names = [parameter_names]
         elif isinstance(parameter_names, list):
             for i in range(len(parameter_names)):
@@ -426,6 +428,7 @@ class ApiDirector:
             return self._log_return(completions_id, False, f"Provided argument 'parameter_names' is of invalid type '{type(parameter_names).__name__}'. Supported types are 'str' and 'list'.", None)
 
         if isinstance(parameter_values, str):
+            parameter_values = copy.copy(parameter_values)
             parameter_values = [parameter_values]
         elif isinstance(parameter_values, list):
             for i in range(len(parameter_values)):
@@ -461,12 +464,13 @@ class ApiDirector:
 
     def set_parameters(self, completions_id, parameter_names=[], parameter_values=[], retry=False):
         # parameter_names: [logger_level, probe_api_connection, api_endpoint, model_name, model_temperatur, model_top_p, model_max_tokens, model_presence_penalty, model_frequency_penalty
-        #                   stream_completion, normalize_text_response, max_tool_calls_per_response, correction_attempts, timeout_chunk, timeout_completion]
+        #                   model_reasoning_effort, stream_completion, normalize_text_response, max_tool_calls_per_response, correction_attempts, timeout_chunk, timeout_completion]
 
         if not isinstance(completions_id, str):
             return self._log_return(None, False, f"Provided argument 'completions_id' is of invalid type '{type(completions_id).__name__}'. Supported type is 'str'.")
 
         if isinstance(parameter_names, str):
+            parameter_names = copy.copy(parameter_names)
             parameter_names = [parameter_names]
         elif isinstance(parameter_names, list):
             for i in range(len(parameter_names)):
@@ -476,6 +480,7 @@ class ApiDirector:
             return self._log_return(completions_id, False, f"Provided argument 'parameter_names' is of invalid type '{type(parameter_names).__name__}'. Supported types are 'str' and 'list'.")
 
         if isinstance(parameter_values, str):
+            parameter_values = copy.copy(parameter_values)
             parameter_values = [parameter_values]
         elif isinstance(parameter_values, list):
             for i in range(len(parameter_values)):
@@ -607,7 +612,7 @@ class ApiDirector:
             return self._log_return(completions_id, False, f"Provided argument 'text' is of invalid type '{type(text).__name__}'. Supported types are 'str' and 'dict'.", None)
         if isinstance(text, dict):
             try:
-                text = json.dumps(text)
+                text = copy.copy(json.dumps(text))
             except Exception as e:
                 return self._log_return(completions_id, False, f"Failed to parse argument 'text' of type 'dict' as JSON: {repr(e)}", None)
         if not isinstance(role, str):
@@ -617,6 +622,7 @@ class ApiDirector:
         if tool_response_id is not None and not isinstance(tool_response_id, str):
             return self._log_return(completions_id, False, f"Provided argument 'tool_response_id' is of invalid type '{type(tool_response_id).__name__}'. Supported types are 'None' and 'str'.", None)
         if isinstance(tool_response_id, str):
+            tool_response_id = copy.copy(tool_response_id)
             if tool_response_id == "":
                 tool_response_id = None
         if not isinstance(response_type, str):
@@ -624,6 +630,7 @@ class ApiDirector:
         if identifier is not None and not isinstance(identifier, str):
             return self._log_return(None, False, f"Provided argument 'identifier' is of invalid type '{type(identifier).__name__}'. Supported types are 'None' and 'str'.", None)
         elif identifier is None:
+            identifier = copy.copy(identifier)
             identifier = ""
         if not isinstance(retry, bool):
             return self._log_return(completions_id, False, f"Provided argument 'retry' is of invalid type '{type(retry).__name__}'. Supported type is 'bool'.", None)
@@ -656,6 +663,7 @@ class ApiDirector:
         if not (timeout is None or isinstance(timeout, int) or isinstance(timeout, float)):
             return self._log_return(None, False, f"Provided argument 'timeout' is of invalid type '{type(timeout).__name__}'. Supported types are 'None', int, and 'float'.", None)
         if timeout is not None:
+            timeout = copy.copy(timeout)
             timeout = abs(timeout)
 
         now = self._node.get_clock().now()
@@ -698,8 +706,11 @@ class ApiDirector:
     def async_set_tools(self, completions_id, tools, retry=False, succeed_async_id=None):
         if not isinstance(completions_id, str):
             return self._log_return(None, False, f"Provided argument 'completions_id' is of invalid type '{type(completions_id).__name__}'. Supported type is 'str'.", None)
-        if not isinstance(tools, list):
-            return self._log_return(completions_id, False, f"Provided argument 'tools' is of invalid type '{type(tools).__name__}'. Supported type is 'list'.", None)
+        if not (tools is None or isinstance(tools, list)):
+            return self._log_return(completions_id, False, f"Provided argument 'tools' is of invalid type '{type(tools).__name__}'. Supported types are 'None' and 'list'.")
+        tools = copy.deepcopy(tools)
+        if tools is None:
+            tools = []
         for i in range(len(tools)):
             if isinstance(tools[i], dict):
                 try:
@@ -737,7 +748,7 @@ class ApiDirector:
             return self._log_return(completions_id, False, f"Provided argument 'text' is of invalid type '{type(text).__name__}'. Supported types are 'str' and 'dict'.", None, None)
         if isinstance(text, dict):
             try:
-                text = json.dumps(text)
+                text = copy.copy(json.dumps(text))
             except Exception as e:
                 return self._log_return(completions_id, False, f"Failed to parse argument 'text' of type 'dict' as JSON: {repr(e)}", None, None)
         if not isinstance(role, str):
@@ -747,6 +758,7 @@ class ApiDirector:
         if tool_response_id is not None and not isinstance(tool_response_id, str):
             return self._log_return(completions_id, False, f"Provided argument 'tool_response_id' is of invalid type '{type(tool_response_id).__name__}'. Supported types are 'None' and 'str'.", None, None)
         if isinstance(tool_response_id, str):
+            tool_response_id = copy.copy(tool_response_id)
             if tool_response_id == "":
                 tool_response_id = None
         if not isinstance(response_type, str):
@@ -754,6 +766,7 @@ class ApiDirector:
         if identifier is not None and not isinstance(identifier, str):
             return self._log_return(None, False, f"Provided argument 'identifier' is of invalid type '{type(identifier).__name__}'. Supported types are 'None' and 'str'.", None)
         elif identifier is None:
+            identifier = copy.copy(identifier)
             identifier = ""
         if not isinstance(retry, bool):
             return self._log_return(completions_id, False, f"Provided argument 'retry' is of invalid type '{type(retry).__name__}'. Supported type is 'bool'.", None, None)
@@ -913,6 +926,7 @@ class ApiDirector:
             return self._log_return(None, False, f"Provided argument 'completions_id' is of invalid type '{type(completions_id).__name__}'. Supported type is 'str'.")
         if not (tools is None or isinstance(tools, list)):
             return self._log_return(completions_id, False, f"Provided argument 'tools' is of invalid type '{type(tools).__name__}'. Supported types are 'None' and 'list'.")
+        tools = copy.deepcopy(tools)
         if tools is None:
             tools = []
         for i in range(len(tools)):
@@ -1167,6 +1181,7 @@ class ApiDirector:
                 return self._log_return("mmgroundingdino", False, "Provided argument 'prompts' is empty list.", None)
             elif len(prompts) == 1:
                 all_lists = False
+                prompts = copy.deepcopy(prompts)
                 prompts = prompts[0]
 
         if not isinstance(model_id, int):
@@ -1185,6 +1200,7 @@ class ApiDirector:
             if len(min_confidence) == 0:
                 return self._log_return("mmgroundingdino", False, "Provided argument 'min_confidence' is empty list.", None)
             elif len(min_confidence) == 1:
+                min_confidence = copy.copy(min_confidence)
                 min_confidence = min_confidence[0]
         elif not isinstance(min_confidence, float):
             return self._log_return("mmgroundingdino", False, f"Provided argument 'min_confidence' is of invalid type '{type(min_confidence).__name__}'. Supported types are 'list' and 'float'.", None)
@@ -1197,6 +1213,7 @@ class ApiDirector:
             if len(nms_iou) == 0:
                 return self._log_return("mmgroundingdino", False, "Provided argument 'nms_iou' is empty list.", None)
             elif len(nms_iou) == 1:
+                nms_iou = copy.copy(nms_iou)
                 nms_iou = nms_iou[0]
         elif not (nms_iou is None or isinstance(nms_iou, float)):
             return self._log_return("mmgroundingdino", False, f"Provided argument 'nms_iou' is of invalid type '{type(nms_iou).__name__}'. Supported types are 'float' and 'None'.", None)
@@ -1209,6 +1226,7 @@ class ApiDirector:
             if len(overdetect_factor) == 0:
                 return self._log_return("mmgroundingdino", False, "Provided argument 'overdetect_factor' is empty list.", None)
             elif len(overdetect_factor) == 1:
+                overdetect_factor = copy.copy(overdetect_factor)
                 overdetect_factor = overdetect_factor[0]
         elif not (overdetect_factor is None or isinstance(overdetect_factor, float)):
             return self._log_return("mmgroundingdino", False, f"Provided argument 'overdetect_factor' is of invalid type '{type(overdetect_factor).__name__}'. Supported types are 'float' and 'None'.", None)
@@ -1477,6 +1495,7 @@ class ApiDirector:
                 return self._log_return("dam", False, "Provided argument 'prompts' is empty list.", None)
             elif len(prompts) == 1:
                 all_lists = False
+                prompts = copy.deepcopy(prompts)
                 prompts = prompts[0]
         try:
             json.dumps(prompts)
@@ -1511,6 +1530,7 @@ class ApiDirector:
             if len(temperature) == 0:
                 return self._log_return("dam", False, "Provided argument 'temperature' is empty list.", None)
             elif len(temperature) == 1:
+                temperature = copy.copy(temperature)
                 temperature = temperature[0]
         elif not isinstance(temperature, float):
             return self._log_return("dam", False, f"Provided argument 'temperature' is of invalid type '{type(temperature).__name__}'. Supported types are 'list' and 'float'.", None)
@@ -1523,6 +1543,7 @@ class ApiDirector:
             if len(top_p) == 0:
                 return self._log_return("dam", False, "Provided argument 'top_p' is empty list.", None)
             elif len(top_p) == 1:
+                top_p = copy.copy(top_p)
                 top_p = top_p[0]
         elif not isinstance(top_p, float):
             return self._log_return("dam", False, f"Provided argument 'top_p' is of invalid type '{type(top_p).__name__}'. Supported types are 'list' and 'float'.", None)
@@ -1535,6 +1556,7 @@ class ApiDirector:
             if len(num_beams) == 0:
                 return self._log_return("dam", False, "Provided argument 'num_beams' is empty list.", None)
             elif len(num_beams) == 1:
+                num_beams = copy.copy(num_beams)
                 num_beams = num_beams[0]
         elif not isinstance(num_beams, int):
             return self._log_return("dam", False, f"Provided argument 'num_beams' is of invalid type '{type(num_beams).__name__}'. Supported types are 'list' and 'int'.", None)
@@ -1547,6 +1569,7 @@ class ApiDirector:
             if len(max_new_tokens) == 0:
                 return self._log_return("dam", False, "Provided argument 'max_new_tokens' is empty list.", None)
             elif len(max_new_tokens) == 1:
+                max_new_tokens = copy.copy(max_new_tokens)
                 max_new_tokens = max_new_tokens[0]
         elif not isinstance(max_new_tokens, int):
             return self._log_return("dam", False, f"Provided argument 'max_new_tokens' is of invalid type '{type(max_new_tokens).__name__}'. Supported types are 'list' and 'int'.", None)
@@ -1559,6 +1582,7 @@ class ApiDirector:
             if len(max_batch_size) == 0:
                 return self._log_return("dam", False, "Provided argument 'max_batch_size' is empty list.", None)
             elif len(max_batch_size) == 1:
+                max_batch_size = copy.copy(max_batch_size)
                 max_batch_size = max_batch_size[0]
         elif not isinstance(max_batch_size, int):
             return self._log_return("dam", False, f"Provided argument 'max_batch_size' is of invalid type '{type(max_batch_size).__name__}'. Supported types are 'list' and 'int'.", None)
@@ -1657,6 +1681,7 @@ class ApiDirector:
         elif not isinstance(prompt, str):
             return self._log_return("kosmos2", False, f"Provided argument 'prompt' is of invalid type '{type(prompt).__name__}'. Supported types are 'list' and 'str'.", None)
         else:
+            prompt = copy.copy(prompt)
             prompt = [prompt]
 
         if not isinstance(model_id, int):
@@ -1675,6 +1700,7 @@ class ApiDirector:
             if len(num_beams) == 0:
                 return self._log_return("kosmos2", False, "Provided argument 'num_beams' is empty list.", None)
             elif len(num_beams) == 1:
+                num_beams = copy.copy(num_beams)
                 num_beams = num_beams[0]
         elif not isinstance(num_beams, int):
             return self._log_return("kosmos2", False, f"Provided argument 'num_beams' is of invalid type '{type(num_beams).__name__}'. Supported types are 'list' and 'int'.", None)
@@ -1687,6 +1713,7 @@ class ApiDirector:
             if len(max_new_tokens) == 0:
                 return self._log_return("kosmos2", False, "Provided argument 'max_new_tokens' is empty list.", None)
             elif len(max_new_tokens) == 1:
+                max_new_tokens = copy.copy(max_new_tokens)
                 max_new_tokens = max_new_tokens[0]
         elif not isinstance(max_new_tokens, int):
             return self._log_return("kosmos2", False, f"Provided argument 'max_new_tokens' is of invalid type '{type(max_new_tokens).__name__}'. Supported types are 'list' and 'int'.", None)
@@ -1699,6 +1726,7 @@ class ApiDirector:
             if len(max_batch_size) == 0:
                 return self._log_return("kosmos2", False, "Provided argument 'max_batch_size' is empty list.", None)
             elif len(max_batch_size) == 1:
+                max_batch_size = copy.copy(max_batch_size)
                 max_batch_size = max_batch_size[0]
         elif not isinstance(max_batch_size, int):
             return self._log_return("kosmos2", False, f"Provided argument 'max_batch_size' is of invalid type '{type(max_batch_size).__name__}'. Supported types are 'list' and 'int'.", None)
@@ -1795,6 +1823,7 @@ class ApiDirector:
         elif not isinstance(prompt, dict):
             return self._log_return("florence2", False, f"Provided argument 'prompt' is of invalid type '{type(prompt).__name__}'. Supported types are 'list' and 'dict'.", None)
         else:
+            prompt = copy.copy(prompt)
             prompt = [prompt]
 
         if not isinstance(model_id, int):
@@ -1813,6 +1842,7 @@ class ApiDirector:
             if len(num_beams) == 0:
                 return self._log_return("florence2", False, "Provided argument 'num_beams' is empty list.", None)
             elif len(num_beams) == 1:
+                num_beams = copy.copy(num_beams)
                 num_beams = num_beams[0]
         elif not isinstance(num_beams, int):
             return self._log_return("florence2", False, f"Provided argument 'num_beams' is of invalid type '{type(num_beams).__name__}'. Supported types are 'list' and 'int'.", None)
@@ -1837,6 +1867,7 @@ class ApiDirector:
             if len(max_batch_size) == 0:
                 return self._log_return("florence2", False, "Provided argument 'max_batch_size' is empty list.", None)
             elif len(max_batch_size) == 1:
+                max_batch_size = copy.copy(max_batch_size)
                 max_batch_size = max_batch_size[0]
         elif not isinstance(max_batch_size, int):
             return self._log_return("florence2", False, f"Provided argument 'max_batch_size' is of invalid type '{type(max_batch_size).__name__}'. Supported types are 'list' and 'int'.", None)
@@ -1928,6 +1959,7 @@ class ApiDirector:
         if identifier is not None and not isinstance(identifier, str):
             return self._log_return(None, False, f"Provided argument 'identifier' is of invalid type '{type(identifier).__name__}'. Supported types are 'None' and 'str'.", None)
         elif identifier is None:
+            identifier = copy.copy(identifier)
             identifier = ""
         if not isinstance(retry, bool):
             return self._log_return(None, False, f"Provided argument 'retry' is of invalid type '{type(retry).__name__}'. Supported type is 'bool'.", None)
@@ -2094,38 +2126,48 @@ class ApiDirector:
         if api_type is not None and not isinstance(api_type, str):
             return self._log_return(None, False, f"Provided argument 'api_type' is of invalid type '{type(api_type).__name__}'. Supported types are 'None' and 'str'.", None)
         elif api_type is None:
+            api_type = copy.copy(api_type)
             api_type = ""
         if api_endpoint is not None and not isinstance(api_endpoint, str):
             return self._log_return(None, False, f"Provided argument 'api_endpoint' is of invalid type '{type(api_endpoint).__name__}'. Supported types are 'None' and 'str'.", None)
         elif api_endpoint is None:
+            api_endpoint = copy.copy(api_endpoint)
             api_endpoint = ""
         if model_name is not None and not isinstance(model_name, str):
             return self._log_return(None, False, f"Provided argument 'model_name' is of invalid type '{type(model_name).__name__}'. Supported types are 'None' and 'str'.", None)
         elif model_name is None:
+            model_name = copy.copy(model_name)
             model_name = ""
         if identifier is not None and not isinstance(identifier, str):
             return self._log_return(None, False, f"Provided argument 'identifier' is of invalid type '{type(identifier).__name__}'. Supported types are 'None' and 'str'.", None)
         elif identifier is None:
+            identifier = copy.copy(identifier)
             identifier = ""
         if stamp_start is not None and not isinstance(stamp_start, (str, int, float, datetime.datetime)):
             return self._log_return(None, False, f"Provided argument 'stamp_start' is of invalid type '{type(stamp_start).__name__}'. Supported types are 'None', 'str', 'int', 'float', and 'datetime.datetime'.", None)
         elif isinstance(stamp_start, str):
             pass
         elif stamp_start is None:
+            stamp_start = copy.copy(stamp_start)
             stamp_start = ""
         elif isinstance(stamp_start, datetime.datetime):
+            stamp_start = copy.copy(stamp_start)
             stamp_start = stamp_start.isoformat()
         else:
+            stamp_start = copy.copy(stamp_start)
             stamp_start = datetime.datetime.fromtimestamp(stamp_start).isoformat()
         if stamp_end is not None and not isinstance(stamp_end, (str, int, float, datetime.datetime)):
             return self._log_return(None, False, f"Provided argument 'stamp_end' is of invalid type '{type(stamp_end).__name__}'. Supported types are 'None', 'str', 'int', 'float', and 'datetime.datetime'.", None)
         elif isinstance(stamp_end, str):
             pass
         elif stamp_end is None:
+            stamp_end = copy.copy(stamp_end)
             stamp_end = ""
         elif isinstance(stamp_end, datetime.datetime):
+            stamp_end = copy.copy(stamp_end)
             stamp_end = stamp_end.isoformat()
         else:
+            stamp_end = copy.copy(stamp_end)
             stamp_end = datetime.datetime.fromtimestamp(stamp_end).isoformat()
         if not isinstance(retry, bool):
             return self._log_return(None, False, f"Provided argument 'retry' is of invalid type '{type(retry).__name__}'. Supported type is 'bool'.", None)
