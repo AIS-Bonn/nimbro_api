@@ -63,7 +63,7 @@ Here is a list of features that I would like to implement at some point:
 
 - [ ] Vision output for Completions
 - [ ] Audio input/output for Completions
-- [ ] Support reasoning models (set effort, parse output, report usage)
+- [ ] Forward reasoning output
 - [ ] Structured outputs for Completions
 - [ ] Random seed for Completions
 - [ ] Web search options for Completions

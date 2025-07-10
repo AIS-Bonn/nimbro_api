@@ -9,6 +9,11 @@ import base64
 import multiprocessing
 
 import requests
+try:
+    import jsonschema
+    JSONSCHEMA_AVAILABLE = True
+except ImportError:
+    JSONSCHEMA_AVAILABLE = False
 
 import rclpy
 from rclpy.node import Node
@@ -464,6 +469,8 @@ class Completions(Node):
 
         return success, reason
 
+    # Utilities
+
     def validate_api_endpoint(self, api_endpoint):
         try:
             json_object = json.loads(api_endpoint)
@@ -547,6 +554,77 @@ class Completions(Node):
                 del self.endpoint_probes[api_endpoint_name]
 
         return success, message
+
+    def validate_tool_properties(self, schema, function_name, path="parameters"):
+        if not isinstance(schema, dict):
+            return False, f"The function '{function_name}' does not satisfy the required format: '{path}' must be a dict."
+
+        if schema.get('type') != "object":
+            return False, f"The function '{function_name}' does not satisfy the required format: '{path}' must be of type 'object'."
+
+        properties = schema.get("properties")
+        if not isinstance(properties, dict):
+            return False, f"The function '{function_name}' does not satisfy the required format: '{path}' is missing a 'properties' dict."
+
+        valid_types = ['boolean', 'string', 'number', 'null', 'object']
+
+        # Validate each property
+        for prop_name, prop in properties.items():
+            prop_path = f"{path}::properties::{prop_name}"
+
+            if not isinstance(prop, dict):
+                return False, f"The function '{function_name}' does not satisfy the required format: The field '{prop_path}' must be of type 'dict'."
+
+            if prop.get('type') == "object":
+                # Recursively validate nested object
+                ok, msg = self.validate_tool_properties(prop, function_name, path=prop_path)
+                if not ok:
+                    return False, msg
+            else:
+                keys = set(prop.keys())
+                if not keys.issubset({'type', 'description', 'enum'}):
+                    return False, f"The function '{function_name}' does not satisfy the required format: The field '{prop_path}' must only contain 'type', 'description', and optionally 'enum'."
+
+                if 'type' not in prop or 'description' not in prop:
+                    return False, f"The function '{function_name}' does not satisfy the required format: The field '{prop_path}' must contain both 'type' and 'description'."
+
+                if prop['type'] not in valid_types:
+                    return False, f"The function '{function_name}' does not satisfy the required format: The field '{prop_path}::type' must be in {valid_types}."
+
+                if not isinstance(prop['description'], str):
+                    return False, f"The function '{function_name}' does not satisfy the required format: The field '{prop_path}::description' must be a string."
+
+                if 'enum' in prop:
+                    if not isinstance(prop['enum'], list):
+                        return False, f"The function '{function_name}' does not satisfy the required format: The field '{prop_path}::enum' must be a list."
+
+                    expected_type = str if prop['type'] == "string" else bool if prop['type'] == "boolean" else (int, float)
+                    for e in prop['enum']:
+                        if not isinstance(e, expected_type):
+                            return False, f"The function '{function_name}' does not satisfy the required format: The field '{prop_path}::enum' must only contain elements of type '{expected_type}' instead of '{type(e).__name__}'."
+
+        # Validate 'required'
+        if "required" in schema:
+            required_list = schema["required"]
+            if not isinstance(required_list, list):
+                return False, f"The function '{function_name}' does not satisfy the required format: '{path}::required' must be a list."
+
+            for r in required_list:
+                if not isinstance(r, str):
+                    return False, f"The function '{function_name}' does not satisfy the required format: All items in '{path}::required' must be strings."
+                if r not in properties:
+                    return False, f"The function '{function_name}' does not satisfy the required format: Required key '{r}' in '{path}::required' is not defined in 'properties'."
+
+        # Validate 'additionalProperties' if 'strict' is true
+        if schema.get("strict") is True:
+            if "additionalProperties" not in schema:
+                return False, f"The function '{function_name}' does not satisfy the required format: '{path}' must include 'additionalProperties' when 'strict' is true."
+            if not isinstance(schema["additionalProperties"], bool):
+                return False, f"The function '{function_name}' does not satisfy the required format: '{path}::additionalProperties' must be a boolean."
+            if schema["additionalProperties"] is True:
+                return False, f"The function '{function_name}' does not satisfy the required format: '{path}::additionalProperties' must be False when 'strict' is true."
+
+        return True, ""
 
     # Prompt Pipeline
 
@@ -777,7 +855,7 @@ class Completions(Node):
                         raise Exception(f"Assistant message elements of key 'tool_calls' must contain key 'id' with value of type 'str' but it of type '{type(element['id']).__name__}'.")
                     if 'type' not in element:
                         raise Exception("Assistant message elements of key 'tool_calls' must contain key 'type'.")
-                    if element['type'] != "function":
+                    if element['type'] != 'function':
                         raise Exception("Assistant message elements of key 'tool_calls' must contain key 'type' with value 'function' but it is '{element['type']}'.")
                     if 'function' not in element:
                         raise Exception("Assistant message elements of key 'tool_calls' must contain key 'function'.")
@@ -861,17 +939,17 @@ class Completions(Node):
             text = request.text.strip()
 
             if request.role == "system":
-                new_message = {"role": request.role, "content": text} # optional name
+                new_message = {'role': request.role, 'content': text} # optional name
 
             elif request.role == "user":
-                new_message = {"role": request.role, "content": [{"type": "text", "text": text}]} # optional name
-                # new_message = {"role": request.role, "content": text} # optional name
+                new_message = {'role': request.role, 'content': [{'type': "text", "text": text}]} # optional name
+                # new_message = {'role': request.role, 'content': text} # optional name
 
             elif request.role == "assistant":
-                new_message = {"role": request.role, "content": text}
+                new_message = {'role': request.role, 'content': text}
 
             elif request.role == "tool":
-                new_message = {"role": request.role, "tool_call_id": request.tool_response_id, "content": text}
+                new_message = {'role': request.role, 'tool_call_id': request.tool_response_id, 'content': text}
             else:
                 raise Exception(f"Encountered unexpected role '{request.role}'")
 
@@ -1027,94 +1105,94 @@ class Completions(Node):
     def tools_to_response_format(self, tools):
         schemas = []
         for tool in tools:
-            fn = tool["function"]
-            name = fn["name"]
-            schema = fn["parameters"]
+            fn = tool['function']
+            name = fn['name']
+            schema = fn['parameters']
             schema["additionalProperties"] = False
 
             schemas.append({
-                "name": name,
+                'name': name,
                 "strict": True,
                 "schema": schema
             })
 
         return {
-            "type": "json_schema",
+            'type': "json_schema",
             "json_schema": schemas[0] if len(schemas) == 1 else schemas
         }
 
     def set_tool_choice(self, request):
         if self.api_endpoints[self.api_endpoint]['api_flavor'] == "openai":
             if request.response_type == "text":
-                self.response_format = {"type": "text"}
+                self.response_format = {'type': "text"}
                 self.tool_choice = "none"
             elif request.response_type == "json":
-                self.response_format = {"type": "json_object"}
+                self.response_format = {'type': "json_object"}
                 self.tool_choice = "none"
             elif request.response_type == "always":
-                self.response_format = {"type": "text"}
+                self.response_format = {'type': "text"}
                 self.tool_choice = "required"
             elif request.response_type == "auto":
-                self.response_format = {"type": "text"}
+                self.response_format = {'type': "text"}
                 self.tool_choice = "auto"
             else:
-                self.response_format = {"type": "text"}
-                self.tool_choice = {"type": "function", "function": {"name": request.response_type}}
+                self.response_format = {'type': "text"}
+                self.tool_choice = {'type': "function", 'function': {'name': request.response_type}}
 
         elif self.api_endpoints[self.api_endpoint]['api_flavor'] == "mistral":
             if request.response_type == "text":
-                self.response_format = {"type": "text"}
+                self.response_format = {'type': "text"}
                 self.tool_choice = "none"
             elif request.response_type == "json":
-                self.response_format = {"type": "json_object"}
+                self.response_format = {'type': "json_object"}
                 self.tool_choice = "none"
             elif request.response_type == "always":
-                self.response_format = {"type": "text"}
+                self.response_format = {'type': "text"}
                 self.tool_choice = "any"
             elif request.response_type == "auto":
-                self.response_format = {"type": "text"}
+                self.response_format = {'type': "text"}
                 self.tool_choice = "auto"
             else:
-                self.response_format = {"type": "text"}
-                self.tool_choice = {"type": "function", "function": {"name": request.response_type}}
+                self.response_format = {'type': "text"}
+                self.tool_choice = {'type': "function", 'function': {'name': request.response_type}}
 
         elif self.api_endpoints[self.api_endpoint]['api_flavor'] == "openrouter":
             if request.response_type == "text":
-                self.response_format = {"type": "text"}
+                self.response_format = {'type': "text"}
                 self.tool_choice = "none"
             elif request.response_type == "json":
-                self.response_format = {"type": "json_object"}
+                self.response_format = {'type': "json_object"}
                 self.tool_choice = "none"
             elif request.response_type == "always":
-                self.response_format = {"type": "text"}
+                self.response_format = {'type': "text"}
                 self.tool_choice = "required"
                 # self.response_format = self.tools_to_response_format(self.tools)
                 # self.tool_choice = "auto"
             elif request.response_type == "auto":
-                self.response_format = {"type": "text"}
+                self.response_format = {'type': "text"}
                 self.tool_choice = "auto"
             else:
-                self.response_format = {"type": "text"}
-                self.tool_choice = {"type": "function", "function": {"name": request.response_type}}
+                self.response_format = {'type': "text"}
+                self.tool_choice = {'type': "function", 'function': {'name': request.response_type}}
 
         elif self.api_endpoints[self.api_endpoint]['api_flavor'] == "vllm":
             if request.response_type == "text":
-                self.response_format = {"type": "text"}
+                self.response_format = {'type': "text"}
                 self.tool_choice = "none"
             elif request.response_type == "json":
-                self.response_format = {"type": "json_object"}
-                # self.response_format = {"type": "text"} # set this to deactivate JSON-mode; response with invalid JSON will still trigger self-correcion.
+                self.response_format = {'type': "json_object"}
+                # self.response_format = {'type': "text"} # set this to deactivate JSON-mode; response with invalid JSON will still trigger self-correcion.
                 self.tool_choice = "none"
             elif request.response_type == "always":
-                self.response_format = {"type": "text"}
+                self.response_format = {'type': "text"}
                 self.tool_choice = "auto" # wait until v1 engines supports 'required'
                 self.get_logger().warn(f"Tool choice '{request.response_type}' is not available for api_flavor '{self.api_endpoints[self.api_endpoint]['api_flavor']}', using '{self.tool_choice}' instead")
             elif request.response_type == "auto":
-                self.response_format = {"type": "text"}
+                self.response_format = {'type': "text"}
                 self.tool_choice = "auto"
             else:
-                self.response_format = {"type": "text"}
-                self.tool_choice = {"type": "function", "function": {"name": request.response_type}}
+                self.response_format = {'type': "text"}
+                self.tool_choice = {'type': "function", 'function': {'name': request.response_type}}
 
         else:
             self.get_logger().fatal(f"Undefined API flavor '{self.api_endpoints[self.api_endpoint]['api_flavor']}'")
@@ -1152,7 +1230,7 @@ class Completions(Node):
                             for k in range(len(messages[j]['content'])):
                                 contents.append(messages[j]['content'][k])
                         self.get_logger().debug(f"Condensing '{len(contents)}' consecutive user messages ('{first}' to '{last}') into a single one")
-                        new_message = {"role": "user", "content": contents}
+                        new_message = {'role': "user", 'content': contents}
                         messages = messages[: first] + [new_message] + messages[last + 1:]
                         break
                     elif messages[i]['role'] != "user":
@@ -1417,7 +1495,7 @@ class Completions(Node):
                                             # extract choices
                                             if len(json_data.get('choices', [])) > 0:
                                                 try:
-                                                    json_choice = json_data["choices"][0]
+                                                    json_choice = json_data['choices'][0]
                                                 except Exception as e:
                                                     self.get_logger().warn(f"Ignoring data '{json_data}' after failure to parse choice as JSON: {repr(e)}")
                                                 else:
@@ -1435,7 +1513,7 @@ class Completions(Node):
                                                         break
                                                     else:
                                                         # forward delta
-                                                        self.pipe[1].send({'code': "COMPLETION", 'content': json_choice["delta"]})
+                                                        self.pipe[1].send({'code': "COMPLETION", 'content': json_choice['delta']})
                             else:
                                 error += line
             else:
@@ -1498,7 +1576,7 @@ class Completions(Node):
                 if 'index' in chunk['tool_calls'][i] and 'function' in chunk['tool_calls'][i]:
                     if 'id' in chunk['tool_calls'][i] and 'name' in chunk['tool_calls'][i]['function']:
                         if len(tool_calls) == chunk['tool_calls'][i]['index']:
-                            tool_calls.append({"id": chunk['tool_calls'][i]['id'], "name": chunk['tool_calls'][i]['function']['name'], 'arguments': ""})
+                            tool_calls.append({'id': chunk['tool_calls'][i]['id'], 'name': chunk['tool_calls'][i]['function']['name'], 'arguments': ""})
                         else:
                             raise Exception(f"Expected tool_calls elements field 'index' to be set to '{len(tool_calls)}' instead of '{chunk['tool_calls'][i]['index']}'")
                     if 'arguments' in chunk['tool_calls'][i]['function']:
@@ -1507,7 +1585,7 @@ class Completions(Node):
                         else:
                             raise Exception(f"Expected tool_calls elements field 'index' to be smaller '{len(tool_calls)}' instead of '{chunk['tool_calls'][i]['index']}'")
                 elif set(chunk['tool_calls'][i].keys()) == {'id', 'type', 'function'}:
-                    tool_calls.append({"id": chunk['tool_calls'][i]['id'], "name": chunk['tool_calls'][i]['function']['name'], "arguments": chunk['tool_calls'][i]['function']['arguments']})
+                    tool_calls.append({'id': chunk['tool_calls'][i]['id'], 'name': chunk['tool_calls'][i]['function']['name'], "arguments": chunk['tool_calls'][i]['function']['arguments']})
                 else:
                     raise Exception(f"Expected tool_calls element to contain the the fields 'index' and 'function', or 'id', 'type' and 'function' instead of {list(chunk['tool_calls'][i].keys())}")
 
@@ -1540,10 +1618,10 @@ class Completions(Node):
         # Responding to such a function would cause the completion to respond with 'invalid function name' due to the illegal use of special characters.
         # So, we remove special characters here, establish a legal function name, and then let the self correction routines check validity w.r.t. the defined JSON Schema.
         for i, call in enumerate(tool_calls):
-            if not re.match('^[a-zA-Z0-9_-]{1,64}$', call["name"]):
-                tool_calls[i]["name"] = re.sub(r"[^a-zA-Z0-9_-]", "", call["name"])
-                tool_calls[i]["name"] = tool_calls[i]["name"][:64]
-                self.get_logger().warn("Encountered invalid function name '" + call["name"] + "', renaming it to '" + tool_calls[i]["name"] + "'")
+            if not re.match('^[a-zA-Z0-9_-]{1,64}$', call['name']):
+                tool_calls[i]['name'] = re.sub(r"[^a-zA-Z0-9_-]", "", call['name'])
+                tool_calls[i]['name'] = tool_calls[i]['name'][:64]
+                self.get_logger().warn("Encountered invalid function name '" + call['name'] + "', renaming it to '" + tool_calls[i]['name'] + "'")
 
         return tool_calls
 
@@ -1587,12 +1665,12 @@ class Completions(Node):
         tool_call_is_valid_default_correction = "This tool call is valid and does not require any correction."
         for i, call in enumerate(tool_calls):
             correction_response.append({})
-            correction_response[-1]["role"] = "tool"
-            correction_response[-1]["tool_call_id"] = call['id']
-            correction_response[-1]["content"] = tool_call_is_valid_default_correction
+            correction_response[-1]['role'] = "tool"
+            correction_response[-1]['tool_call_id'] = call['id']
+            correction_response[-1]['content'] = tool_call_is_valid_default_correction
         correction_response.append({})
-        correction_response[-1]["role"] = "user"
-        correction_response[-1]["content"] = "Your response is invalid. Please correct it based on the provided error messages and try again!"
+        correction_response[-1]['role'] = "user"
+        correction_response[-1]['content'] = "Your response is invalid. Please correct it based on the provided error messages and try again!"
 
         # test error cases
 
@@ -1603,7 +1681,7 @@ class Completions(Node):
             self.get_logger().error(response_message[:-1])
             for i in range(len(correction_response)):
                 if 'tool_call_id' in correction_response[i]:
-                    correction_response[i]["content"] = "Your response must not contain any tool call, but only text content."
+                    correction_response[i]['content'] = "Your response must not contain any tool call, but only text content."
 
         # error case: tool choice "use specific function" was violated
         if self.tools is not None and request.response_type != "text" and request.response_type != "auto" and request.response_type != "always" and request.response_type != "json":
@@ -1611,22 +1689,22 @@ class Completions(Node):
                 is_valid = False
                 response_message = "Response contains text content despite tool choice being set to '" + request.response_type + "'."
                 self.get_logger().error(response_message[:-1])
-                correction_response[-1]["content"] = "Your response must only contain a tool call of '" + request.response_type + "' without additional text."
+                correction_response[-1]['content'] = "Your response must only contain a tool call of '" + request.response_type + "' without additional text."
             else:
                 valid_ids = []
                 invalid_ids_names = {}
                 for c in tool_calls:
-                    if c["name"] == request.response_type:
-                        valid_ids.append(c["id"])
+                    if c['name'] == request.response_type:
+                        valid_ids.append(c['id'])
                     else:
-                        invalid_ids_names[c["id"]] = c["name"]
+                        invalid_ids_names[c['id']] = c['name']
                 for i in range(len(correction_response)):
-                    if correction_response[i]["role"] == "tool":
+                    if correction_response[i]['role'] == "tool":
                         if not correction_response[i]['tool_call_id'] in valid_ids:
                             is_valid = False
                             response_message = "Response contains tool call '" + invalid_ids_names[correction_response[i]['tool_call_id']] + "' despite tool choice being set to '" + request.response_type + "'."
                             self.get_logger().error(response_message[:-1])
-                            correction_response[i]["content"] = "Your response must only contain the tool call '" + request.response_type + "'."
+                            correction_response[i]['content'] = "Your response must only contain the tool call '" + request.response_type + "'."
 
         # error case: exceeding maximum number of tool calls per response
         if len(tool_calls) > self.max_tool_calls_per_response and self.max_tool_calls_per_response > 0:
@@ -1635,7 +1713,7 @@ class Completions(Node):
             self.get_logger().error(response_message[:-1])
             for i in range(len(correction_response)):
                 if 'tool_call_id' in correction_response[i]:
-                    correction_response[i]["content"] = "A valid response must contain at most " + str(self.max_tool_calls_per_response) + " tool call" + ("" if self.max_tool_calls_per_response == 1 else "s") + ", but yours contains " + str(len(tool_calls)) + " tool calls. Please filter accordingly and try again!"
+                    correction_response[i]['content'] = "A valid response must contain at most " + str(self.max_tool_calls_per_response) + " tool call" + ("" if self.max_tool_calls_per_response == 1 else "s") + ", but yours contains " + str(len(tool_calls)) + " tool calls. Please filter accordingly and try again!"
 
         # error case: custom tool choice "always" was violated
         if request.response_type == "always" and len(tool_calls) == 0:
@@ -1645,23 +1723,23 @@ class Completions(Node):
             for i in range(len(correction_response)):
                 if 'tool_call_id' not in correction_response[i]:
                     if self.max_tool_calls_per_response == 1:
-                        correction_response[i]["content"] = "Please express your last message in a tool call instead of a text response!"
+                        correction_response[i]['content'] = "Please express your last message in a tool call instead of a text response!"
                     else:
-                        correction_response[i]["content"] = "Your response must contain " + ("at least one" if self.max_tool_calls_per_response > 1 else "a") + " tool call. Please try again!"
+                        correction_response[i]['content'] = "Your response must contain " + ("at least one" if self.max_tool_calls_per_response > 1 else "a") + " tool call. Please try again!"
 
         # error case: function call violates JSON Schema
         for i, call in enumerate(tool_calls):
             for j in range(len(correction_response)):
                 if 'tool_call_id' in correction_response[j]:
-                    if call["id"] == correction_response[j]['tool_call_id']:
-                        if correction_response[j]["content"] == tool_call_is_valid_default_correction:
-                            valid, reason = self.check_tool_call_validity([call["name"], call["arguments"]])
+                    if call['id'] == correction_response[j]['tool_call_id']:
+                        if correction_response[j]['content'] == tool_call_is_valid_default_correction:
+                            valid, reason = self.validate_tool_call(call)
                             if not valid:
                                 is_valid = False
-                                correction_response[j]["content"] = reason
+                                correction_response[j]['content'] = reason
                                 response_message = reason
                         else:
-                            self.get_logger().debug("Skipping JSON-scheme based validity check of tool call '" + call["name"] + "' as it is already considered invalid by some previous filter")
+                            self.get_logger().debug(f"Skipping JSON-scheme based validity check of tool call '{call['name']}' as it is already considered invalid by some previous filter")
 
         # error case: text response cannot be parsed as JSON despite JSON-mode being activated
         if request.response_type == "json":
@@ -1671,88 +1749,53 @@ class Completions(Node):
                 is_valid = False
                 response_message = f"Response cannot be parsed as JSON despite response type being set to JSON: {repr(e)}"
                 self.get_logger().error(response_message[:-1])
-                correction_response[-1]["content"] = "Your response is invalid because it cannot be parsed as JSON. Please try again and respond only with valid JSON and no additional text."
+                correction_response[-1]['content'] = "Your response is invalid because it cannot be parsed as JSON. Please try again and respond only with valid JSON and no additional text."
             else:
                 self.get_logger().debug("Response parses as JSON")
 
         return is_valid, response_message, correction_response
 
-    def check_tool_call_validity(self, tool_call):
-        valid = True
-        message = ""
+    def validate_tool_call(self, tool_call):
+        success = True
+        message = "Tool call is valid."
 
-        if not isinstance(tool_call, list):
-            valid = False
-            message = "A function call should be of type 'list'."
-        elif not len(tool_call) == 2:
-            valid = False
-            message = "A function call should be a list of length '2'."
+        call_name = tool_call.get('name')
+        call_args = tool_call.get("arguments")
+
+        if call_name is None or call_args is None:
+            success = False
+            message = "Tool call must include 'name' and 'arguments' fields in 'function'."
         else:
-            found = None
-            if self.tools is not None:
-                for i in range(len(self.tools)): # TODO lock to not update functions between calling model and evaluating response
-                    if self.tools[i]["function"]["name"] == tool_call[0]:
-                        found = i
-                        break
-            if found is None:
-                valid = False
-                message = f"'{tool_call[0]}' is not a valid function name."
+            matched = next(
+                (tool for tool in self.tools if tool.get('type') == "function" and tool.get("function", {}).get('name') == call_name),
+                None
+            )
+
+            if matched is None:
+                success = False
+                message = "Tool call cannot be associated with any tool definition."
             else:
+                schema = matched["function"].get("parameters", {})
                 try:
-                    parameters = json.loads(tool_call[1])
-                except Exception as e:
-                    valid = False
-                    message = f"Failed to parse arguments as JSON: {repr(e)}"
+                    arguments = json.loads(call_args)
+                except json.JSONDecodeError as e:
+                    success = False
+                    message = f"Invalid JSON in 'arguments': {e.msg}"
                 else:
-                    for p in parameters.keys():
-
-                        if p not in self.tools[i]["function"]["parameters"]["properties"].keys():
-                            valid = False
-                            message = f"'{p}' is not a valid argument to this function."
-                            break
-
-                        if isinstance(parameters[p], str):
-                            if not self.tools[i]["function"]["parameters"]["properties"][p]["type"] == "string":
-                                valid = False
-                                message = f"Argument '{p}' should be of type 'string' but is of type '{type(parameters[p]).__name__}'."
-                                break
-                        elif isinstance(parameters[p], bool):
-                            if not self.tools[i]["function"]["parameters"]["properties"][p]["type"] == "boolean":
-                                valid = False
-                                message = f"Argument '{p}' should be of type 'boolean' but is of type '{type(parameters[p]).__name__}'."
-                                break
-                        elif isinstance(parameters[p], (int, float)):
-                            if not self.tools[i]["function"]["parameters"]["properties"][p]["type"] == "number":
-                                valid = False
-                                message = f"Argument '{p}' should be of type 'number' but is of type '{type(parameters[p]).__name__}'."
-                                break
-                        else:
-                            valid = False
-                            message = f"Argument '{p}' is of unsupported type '{type(parameters[p]).__name__}'."
-                            break
-
-                        if "enum" in self.tools[i]["function"]["parameters"]["properties"][p].keys():
-                            if not parameters[p] in self.tools[i]["function"]["parameters"]["properties"][p]["enum"]:
-                                if ignore_invalid_function_parameter_enums:
-                                    self.get_logger().warn(f"Ignoring invalid value '{parameters[p]}' of argument '{p}' in function '{tool_call[0]}'")
-                                else:
-                                    valid = False
-                                    message = f"Value '{parameters[p]}' of argument '{p}' is not valid. " + ((f"Values for argument '{p}' must be in list {self.tools[i]['function']['parameters']['properties'][p]['enum']}.\nAlternatively, you might want to call a different function.") if len(self.tools[i]['function']['parameters']['properties'][p]['enum']) else f"Currently, there exists no valid value for argument '{p}', please call a function other then '{tool_call[0]}' instead.")
-                                    break
-
-                    if "required" in self.tools[i]["function"]['parameters']:
-                        for p in self.tools[i]["function"]['parameters']['required']:
-                            if p not in parameters.keys():
-                                valid = False
-                                message = f"This function requires an argument '{p}'."
-                                break
-
-        if valid:
-            self.get_logger().debug(f"Function call '{tool_call}' is valid")
+                    if JSONSCHEMA_AVAILABLE:
+                        validator = jsonschema.Draft7Validator(schema)
+                        errors = sorted(validator.iter_errors(arguments), key=lambda e: e.path)
+                        if errors:
+                            success = False
+                            message = f"JSON- Validation error: {errors[0].message}"
+                    else:
+                        self.get_logger().warn("Tool call cannot be validated against tool definitions because the 'jsonschema' module is not available", once=True)
+        if success:
+            self.get_logger().debug(f"Tool call '{tool_call}' is valid")
         else:
-            self.get_logger().error(f"Function call '{tool_call}' is not valid ({message[:-1]})")
+            self.get_logger().error(f"Tool call '{tool_call}' is not valid: {message}")
 
-        return valid, message
+        return success, message
 
     def post_process_completion(self, request, text, tool_calls, is_valid, corrections, message):
         if not is_valid:
@@ -1903,155 +1946,76 @@ class Completions(Node):
                 except Exception as e:
                     response.success = False
                     response.message = f"Failed to parse function '{request.tools[i]}' as JSON: {repr(e)}"
-                    self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
+                    self.get_logger().error(f"Failed to set tools: {response.message}")
                     break
 
-                keys_required = {'name', 'description', 'parameters'}
-                keys_optional = {'strict'}
+                keys_required = {'name', 'description'} # OpenAI allows omitting 'parameters', Mistral does not, and OpenRouter does with some models
+                keys_optional = {'strict', 'parameters'}
+
                 if not (set(tools[-1].keys()).issubset(keys_required | keys_optional) and keys_required.issubset(tools[-1])):
                     response.success = False
-                    response.message = f"Function '{i}' does not satisfy the required format - The top level keys must be {list(keys_required)} and optionally {list(keys_optional)} instead of {list(tools[-1].keys())}."
-                    self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
+                    response.message = f"Function '{i}' does not satisfy the required format: The top level keys must be {list(keys_required)} and optionally {list(keys_optional)} instead of {list(tools[-1].keys())}."
+                    self.get_logger().error(f"Failed to set tools: {response.message}")
                     break
 
                 if not isinstance(tools[-1]['name'], str):
                     response.success = False
-                    response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'name' must be of type 'str' instead of '{type(tools[-1]['name']).__name__}'."
-                    self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
+                    response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format: The field 'name' must be of type 'str' instead of '{type(tools[-1]['name']).__name__}'."
+                    self.get_logger().error(f"Failed to set tools: {response.message}")
                     break
 
                 if tools[-1]['name'] in used_names:
                     response.success = False
                     response.message = f"All functions must feature a unique name - The name '{tools[-1]['name']}' is featured more than once."
-                    self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
+                    self.get_logger().error(f"Failed to set tools: {response.message}")
                     break
 
                 used_names.append(tools[-1]['name'])
 
                 if not isinstance(tools[-1]['description'], str):
                     response.success = False
-                    response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'description' must be of type 'str' instead of '{type(tools[-1]['description']).__name__}'."
-                    self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
+                    response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format: The field 'description' must be of type 'str' instead of '{type(tools[-1]['description']).__name__}'."
+                    self.get_logger().error(f"Failed to set tools: {response.message}")
                     break
 
                 if 'strict' in tools[-1]:
                     if not isinstance(tools[-1]['strict'], bool):
                         response.success = False
-                        response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'strict' must be of type 'bool' instead of '{type(tools[-1]['strict']).__name__}'."
-                        self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
+                        response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format: The field 'strict' must be of type 'bool' instead of '{type(tools[-1]['strict']).__name__}'."
+                        self.get_logger().error(f"Failed to set tools: {response.message}")
                         break
 
-                if not isinstance(tools[-1]['parameters'], dict):
-                    response.success = False
-                    response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'parameters' must be of type 'dict' instead of '{type(tools[-1]['parameters']).__name__}'."
-                    self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
-                    break
-
-                keys_required = {'type', 'properties'}
-                keys_optional = {'required', 'additionalProperties'}
-                if not set(tools[-1]['parameters'].keys()).issubset(keys_required | keys_optional) and keys_required.issubset(tools[-1]['parameters']):
-                    response.success = False
-                    response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'parameters' must contain the keys {list(keys_required)} and optionally {list(keys_optional)}."
-                    self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
-                    break
-
-                if tools[-1]['parameters']['type'] != "object":
-                    response.success = False
-                    response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'parameters'::'type' must be set to 'object'."
-                    self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
-                    break
-
-                for p in tools[-1]['parameters']['properties'].keys():
-
-                    if not isinstance(tools[-1]['parameters']['properties'][p], dict):
+                if 'parameters' in tools[-1]:
+                    if not isinstance(tools[-1]['parameters'], dict):
                         response.success = False
-                        response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'properties'::'{p}' must be of type 'dict' instead of '{type(tools[-1]['parameters']['properties'][p]).__name__}'."
-                        self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
+                        response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format: The field 'parameters' must be of type 'dict' instead of '{type(tools[-1]['parameters']).__name__}'."
+                        self.get_logger().error(f"Failed to set tools: {response.message}")
                         break
 
-                    if set(tools[-1]['parameters']['properties'][p].keys()) != {'type', 'description'} and set(tools[-1]['parameters']['properties'][p].keys()) != {'type', 'description', 'enum'}:
+                    keys_required = {'type', 'properties'}
+                    keys_optional = {'required', 'additionalProperties'}
+                    if not set(tools[-1]['parameters'].keys()).issubset(keys_required | keys_optional) and keys_required.issubset(tools[-1]['parameters']):
                         response.success = False
-                        response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'properties'::'{p}' must contain the keys 'type', 'description', and optionally 'enum'."
-                        self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
+                        response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format: The field 'parameters' must contain the keys {list(keys_required)} and optionally {list(keys_optional)}."
+                        self.get_logger().error(f"Failed to set tools: {response.message}")
                         break
 
-                    if not isinstance(tools[-1]['parameters']['properties'][p]['description'], str):
+                    if tools[-1]['parameters']['type'] != "object":
                         response.success = False
-                        response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'properties'::'{p}'::'description' must be of type 'str' instead of '{type(tools[-1]['parameters']['properties'][p]['description']).__name__}'."
-                        self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
+                        response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format: The field 'parameters'::'type' must be set to 'object'."
+                        self.get_logger().error(f"Failed to set tools: {response.message}")
                         break
 
-                    valid_types = ['boolean', 'string', 'number', 'null']
-                    if not tools[-1]['parameters']['properties'][p]['type'] in valid_types:
+                    success, message = self.validate_tool_properties(tools[-1]['parameters'], tools[-1]['name'])
+                    if not success:
                         response.success = False
-                        response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'properties'::'{p}'::'type' must be in {valid_types}."
-                        self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
+                        response.message = message
+                        self.get_logger().error(f"Failed to set tools: {response.message}")
                         break
-
-                    if 'enum' in tools[-1]['parameters']['properties'][p].keys():
-
-                        if not isinstance(tools[-1]['parameters']['properties'][p]['enum'], list):
-                            response.success = False
-                            response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'properties'::'{p}'::'enum' must by of type 'list'."
-                            self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
-                            break
-
-                        if tools[-1]['parameters']['properties'][p]['type'] == 'string':
-                            t = str
-                        elif tools[-1]['parameters']['properties'][p]['type'] == 'boolean':
-                            t = bool
-                        else:
-                            t = (int, float)
-
-                        for e in tools[-1]['parameters']['properties'][p]['enum']:
-                            if not isinstance(e, t):
-                                response.success = False
-                                response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'properties'::'{p}'::'enum' must only contain elements of type '{t}' instead of '{type(e).__name__}'."
-                                self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
-                                break
-
-                if 'required' in tools[-1]['parameters'].keys():
-                    if not isinstance(tools[-1]['parameters']['required'], list):
-                        response.success = False
-                        response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'required' must be of type 'list'."
-                        self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
-                        break
-
-                    for r in tools[-1]['parameters']['required']:
-
-                        if not isinstance(r, str):
-                            response.success = False
-                            response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - All elements in list 'required' must by of type 'str' instead of '{type(r).__name__}'."
-                            self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
-                            break
-
-                        if r not in tools[-1]['parameters']['properties'].keys():
-                            response.success = False
-                            response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - All elements in list 'required' must refer to an element in 'properties', unlike '{r}'."
-                            self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
-                            break
-
-                if 'strict' in tools[-1]:
-                    if tools[-1]['strict'] is True:
-                        if 'additionalProperties' not in tools[-1]['parameters']:
-                            response.success = False
-                            response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'parameters::additionalProperties' must be supplied when 'strict' is set to 'True'."
-                            self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
-                            break
-                        elif not isinstance(tools[-1]['parameters']['additionalProperties'], bool):
-                            response.success = False
-                            response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'parameters::additionalProperties' must be of type 'bool' instead of '{type(tools[-1]['parameters']['additionalProperties']).__name__}'."
-                            self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
-                            break
-                        elif tools[-1]['parameters']['additionalProperties'] is True:
-                            response.success = False
-                            response.message = f"The function '{tools[-1]['name']}' does not satisfy the required format - The field 'parameters::additionalProperties' must be set to 'False' when 'strict' is set to 'True'."
-                            self.get_logger().error(f"Failed to set tools ({response.message[:-1]})")
-                            break
 
             if response.success is True:
                 for i, f in enumerate(tools):
-                    tools[i] = {"type": "function", "function": f}
+                    tools[i] = {'type': "function", 'function': f}
 
                 if self.tools is None:
                     self.get_logger().info("Activated tools:\n" + str('\n'.join([str(tool) for tool in tools])))
