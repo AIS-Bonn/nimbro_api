@@ -1,26 +1,26 @@
 from glob import glob
 from setuptools import setup, find_packages
 
-package_name = 'nimbro_api'
+package_name = "nimbro_api"
 
 setup(
     name=package_name,
-    version='1.0.0',
+    version="1.0.0",
     packages=find_packages(include=[f"{package_name}*"]),
     data_files=[
-        ('share/ament_index/resource_index/packages',
-            ['resource/' + package_name]),
-        ('share/' + package_name, ['package.xml']),
-        ('share/' + package_name + '/launch', glob('launch/*.py'))
+        ("share/ament_index/resource_index/packages",
+            ["resource/" + package_name]),
+        ("share/" + package_name, ["package.xml"]),
+        ("share/" + package_name + "/launch", glob("launch/*.py"))
     ],
-    install_requires=['setuptools'],
+    install_requires=["setuptools"],
     zip_safe=True,
-    maintainer='Bastian Pätzold',
-    maintainer_email='paetzold@ais.uni-bonn.de',
-    description='This package exposes various APIs (Chat Completions, Embeddings, Images, Speech, NimbRoVision) to ROS2.',
-    license='BSD-3-Clause',
+    maintainer="Bastian Pätzold",
+    maintainer_email="paetzold@ais.uni-bonn.de",
+    description="This package exposes various APIs (Chat Completions, Embeddings, Images, Speech, NimbRoVision) to ROS2.",
+    license_files=["LICENSE"],
     entry_points={
-        'console_scripts': [
+        "console_scripts": [
             f"completions = {package_name}.completions:main",
             f"completions_multiplexer = {package_name}.completions_multiplexer:main",
             f"embeddings = {package_name}.embeddings:main",

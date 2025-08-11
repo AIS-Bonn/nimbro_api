@@ -1,4 +1,39 @@
 {
+    "gpt-5": {
+        "tokens_input_uncached": 1.25,
+        "tokens_input_cached": 0.125,
+        "tokens_output": 10.0
+    },
+    "gpt-5-2025-08-07": {
+        "tokens_input_uncached": 1.25,
+        "tokens_input_cached": 0.125,
+        "tokens_output": 10.0
+    },
+    "gpt-5-chat-latest": {
+        "tokens_input_uncached": 1.25,
+        "tokens_input_cached": 0.125,
+        "tokens_output": 10.0
+    },
+    "gpt-5-mini": {
+        "tokens_input_uncached": 0.25,
+        "tokens_input_cached": 0.025,
+        "tokens_output": 2.0
+    },
+    "gpt-5-mini-2025-08-07": {
+        "tokens_input_uncached": 0.25,
+        "tokens_input_cached": 0.025,
+        "tokens_output": 2.0
+    },
+    "gpt-5-nano": {
+        "tokens_input_uncached": 0.05,
+        "tokens_input_cached": 0.005,
+        "tokens_output": 0.40
+    },
+    "gpt-5-nano-2025-08-07": {
+        "tokens_input_uncached": 0.05,
+        "tokens_input_cached": 0.005,
+        "tokens_output": 0.40
+    },
     "o4-mini": {
         "tokens_input_uncached": 1.10,
         "tokens_input_cached": 0.275,

@@ -35,7 +35,7 @@ logger_level = 10
 
 probe_api_connection = True
 api_endpoint = "OpenAI"
-model_name = "gpt-4o"
+model_name = "gpt-5"
 
 model_temperatur = 1.0
 model_top_p = 1.0
