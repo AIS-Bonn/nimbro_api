@@ -625,7 +625,9 @@ class ApiDirector:
             tool_response_id = copy.copy(tool_response_id)
             if tool_response_id == "":
                 tool_response_id = None
-        if not isinstance(response_type, str):
+        if response_type is None:
+            response_type = "none"
+        elif not isinstance(response_type, str):
             return self._log_return(completions_id, False, f"Provided argument 'response_type' is of invalid type '{type(response_type).__name__}'. Supported type is 'str'.", None)
         if identifier is not None and not isinstance(identifier, str):
             return self._log_return(None, False, f"Provided argument 'identifier' is of invalid type '{type(identifier).__name__}'. Supported types are 'None' and 'str'.", None)
@@ -761,7 +763,9 @@ class ApiDirector:
             tool_response_id = copy.copy(tool_response_id)
             if tool_response_id == "":
                 tool_response_id = None
-        if not isinstance(response_type, str):
+        if response_type is None:
+            response_type = "none"
+        elif not isinstance(response_type, str):
             return self._log_return(completions_id, False, f"Provided argument 'response_type' is of invalid type '{type(response_type).__name__}'. Supported type is 'str'.", None, None)
         if identifier is not None and not isinstance(identifier, str):
             return self._log_return(None, False, f"Provided argument 'identifier' is of invalid type '{type(identifier).__name__}'. Supported types are 'None' and 'str'.", None)

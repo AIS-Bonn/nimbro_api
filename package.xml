@@ -6,6 +6,7 @@
   <description>This package exposes various APIs (Chat Completions, Embeddings, Images, Speech, NimbRoVision) to ROS2.</description>
   <maintainer email="paetzold@ais.uni-bonn.de">Bastian Pätzold</maintainer>
   <license>BSD-3-Clause</license>
+  <depend>nimbro_api_interfaces</depend>
   <export>
     <build_type>ament_python</build_type>
   </export>

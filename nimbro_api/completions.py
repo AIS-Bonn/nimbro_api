@@ -1358,34 +1358,44 @@ class Completions(Node):
                     try:
                         json_data = completion.json()
                     except Exception as e:
-                        message = f"Failed to parse response as JSON: {repr(e)}"
+                        message = f"Error while receiving response: Failed to parse response as JSON: {repr(e)}"
                         self.pipe[1].send({'code': "ERROR", 'content': message})
                     else:
+                        self.get_logger().debug("POST response:\n" + json.dumps(json_data, indent=4))
+                        # usage
+                        if 'usage' in json_data:
+                            self.pipe[1].send({'code': "USAGE", 'content': json_data['usage']})
+                        else:
+                            self.get_logger().warn("Response does not contain usage")
+                        # choices
                         if 'choices' not in json_data:
-                            message = "Expected response to contain key 'choices'"
+                            message = "Error while receiving response: Expected response to contain key 'choices'."
                             self.pipe[1].send({'code': "ERROR", 'content': message})
                         elif not isinstance(json_data['choices'], list):
-                            message = f"Expected response value of key 'choices' to be of type 'list' instead of '{type(json_data['choices']).__name__}'"
+                            message = f"Error while receiving response: Expected value of key 'choices' to be of type 'list' instead of '{type(json_data['choices']).__name__}'."
                             self.pipe[1].send({'code': "ERROR", 'content': message})
                         elif len(json_data['choices']) == 0:
-                            message = "Expected response list 'choices' to contain at least one element"
+                            message = "Error while receiving response: Expected list 'choices' to contain at least one element."
                             self.pipe[1].send({'code': "ERROR", 'content': message})
+                        # finish_reason
+                        elif 'finish_reason' not in json_data['choices'][0]:
+                            message = "Error while receiving response: Expected choice to contain key 'finish_reason'."
+                            self.pipe[1].send({'code': "ERROR", 'content': message})
+                        elif json_data['choices'][0]['finish_reason'] not in [None, "stop", "tool_calls", "STOP", "end_turn"]:
+                            message = f"Error while receiving response: Expected value of key 'finish_reason' to be in '{[None, 'stop', 'tool_calls', 'STOP', 'end_turn']}' instead of '{json_data['choices'][0]['finish_reason']}'."
+                            self.pipe[1].send({'code': "ERROR", 'content': message})
+                        # message
                         elif 'message' not in json_data['choices'][0]:
-                            message = "Expected response choice to contain key 'message'"
+                            message = "Error while receiving response: Expected choice to contain key 'message'."
                             self.pipe[1].send({'code': "ERROR", 'content': message})
                         elif not isinstance(json_data['choices'][0]['message'], dict):
-                            message = f"Expected response choice value of key 'message' to be of type 'dict' instead of '{type(json_data['choices'][0]['message']).__name__}'"
+                            message = f"Error while receiving response: Expected value of key 'message' to be of type 'dict' instead of '{type(json_data['choices'][0]['message']).__name__}'."
                             self.pipe[1].send({'code': "ERROR", 'content': message})
                         else:
-                            self.get_logger().debug("POST response:\n" + json.dumps(json_data, indent=4))
                             completion = json_data['choices'][0]['message']
                             if 'tool_calls' in completion and completion['tool_calls'] is None:
                                 del completion['tool_calls']
                             self.pipe[1].send({'code': "COMPLETION", 'content': completion})
-                            if 'usage' in json_data:
-                                self.pipe[1].send({'code': "USAGE", 'content': json_data['usage']})
-                            else:
-                                self.get_logger().warn("Reponse did not contain usage")
                             self.pipe[1].send({'code': "ALL_CHUNKS_RECEIVED", 'content': ''})
 
                 self.get_logger().debug("completion_process(): end")
@@ -1588,6 +1598,12 @@ class Completions(Node):
                     tool_calls.append({'id': chunk['tool_calls'][i]['id'], 'name': chunk['tool_calls'][i]['function']['name'], "arguments": chunk['tool_calls'][i]['function']['arguments']})
                 else:
                     raise Exception(f"Expected tool_calls element to contain the the fields 'index' and 'function', or 'id', 'type' and 'function' instead of {list(chunk['tool_calls'][i].keys())}")
+
+        # fix empty arguments (e.g. Claude does that)
+        for i, tool_call in enumerate(tool_calls):
+            if tool_call['arguments'] == "":
+                self.get_logger().debug(f"Fixing empty arguments of tool call '{tool_call['name']}' to empty dictionary")
+                tool_calls[i]['arguments'] = r"{}"
 
         return text, tool_calls
 
