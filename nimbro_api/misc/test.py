@@ -3,19 +3,20 @@
 import json
 import traceback
 
-import rclpy
 from rclpy.node import Node
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 
 from nimbro_api.api_director import ApiDirector
-from nimbro_api.utils.node import start_and_spin_node
+
+from nimbro_utils.lazy import start_and_spin_node, Logger
 
 class TestNode(Node):
     def __init__(self, name="nimbro_api_tests", *, context=None, **kwargs):
         super().__init__(name, context=context, **kwargs)
         self.api_director = ApiDirector(self)
         self.timer_state = self.create_timer(0.0, self.state_machine, callback_group=MutuallyExclusiveCallbackGroup())
-        rclpy.logging.set_logger_level(f"{self.get_namespace()}/{self.get_name()}".replace("//", "/")[1:].replace("/", "."), rclpy.logging.LoggingSeverity(10))
+        self._logger = Logger(self)
+        self._logger.set_settings(settings={'severity': 10})
         self.get_logger().info("Node started")
 
     def state_machine(self):
@@ -31,74 +32,74 @@ class TestNode(Node):
     def test(self):
         parameter_sets = [
             # {
-            #     'logger_level': "10",
-            #     'probe_api_connection': "True",
-            #     # 'api_endpoint': json.dumps({
-            #     #     'name': "OpenAI",
-            #     #     'api_flavor': "openai",
-            #     #     'models_url': "https://api.openai.com/v1/models",
-            #     #     'completions_url': "https://api.openai.com/v1/chat/completions",
-            #     #     'key_type': "plain", # "environment"
-            #     #     'key_value': "yourkey123"
-            #     # }),
-            #     'api_endpoint': "OpenAI",
-            #     'model_name': "gpt-4o",
-            #     'model_temperatur': "1.0",
-            #     'model_top_p': "1.0",
-            #     'model_max_tokens': "1000",
-            #     'model_presence_penalty': "0.0",
-            #     'model_frequency_penalty': "0.0",
-            #     'stream_completion': "True",
-            #     'normalize_text_response': "True",
-            #     'max_tool_calls_per_response': "1",
-            #     'correction_attempts': "2",
-            #     'timeout_chunk': "15.0",
-            #     'timeout_completion': "60.0"
+            #     # 'severity': 10,
+            #     # 'log_line_length': 150,
+            #     # 'log_last_messages': 0,
+            #     # 'log_chunks': False,
+            #     # 'probe_api_connection': True,
+            #     # 'api_endpoint': "OpenRouter",
+            #     # 'model_name': "google/gemini-2.5-flash",
+            #     # 'model_temperature': 1.0,
+            #     # 'model_top_p': 1.0,
+            #     # 'model_max_tokens': 5000,
+            #     # 'model_presence_penalty': 0.0,
+            #     # 'model_frequency_penalty': 0.0,
+            #     # 'model_reasoning_effort': "none",
+            #     # 'completion_parsers': [""],
+            #     # 'completion_parsers_timeout': 5.0,
+            #     # 'completion_parsers_folder': os.path.join(get_package_prefix("nimbro_api").replace("install", "src"), "nimbro_api", "misc", "parsers", "completion"),
+            #     # 'stream_completion': True,
+            #     # 'normalize_text_completion': False,
+            #     # 'max_tool_calls_per_completion': 1,
+            #     # 'correction_attempts': 0,
+            #     # 'timeout_chunk_first': 10.0,
+            #     # 'timeout_chunk_next': 5.0,
+            #     # 'timeout_completion': 20.0,
             # },
             {
-                'logger_level': "10",
+                'severity': "10",
                 'stream_completion': "False",
                 'api_endpoint': "OpenAI",
                 'model_name': "gpt-4o"
             },
             {
-                'logger_level': "10",
+                'severity': "10",
                 'stream_completion': "True",
                 'api_endpoint': "OpenAI",
                 'model_name': "gpt-4o"
-            },
-            {
-                'logger_level': "10",
-                'stream_completion': "False",
-                'api_endpoint': "Mistral AI",
-                'model_name': "mistral-large-latest"
-            },
-            {
-                'logger_level': "10",
-                'stream_completion': "True",
-                'api_endpoint': "Mistral AI",
-                'model_name': "mistral-large-latest"
-            },
-            {
-                'logger_level': "10",
-                'stream_completion': "False",
-                'api_endpoint': "OpenRouter",
-                'model_name': "google/gemini-2.0-flash-001",
-            },
-            {
-                'logger_level': "10",
-                'stream_completion': "True",
-                'api_endpoint': "OpenRouter",
-                'model_name': "google/gemini-2.0-flash-001",
             },
             # {
-            #     'logger_level': "10",
+            #     'severity': "10",
+            #     'stream_completion': "False",
+            #     'api_endpoint': "Mistral AI",
+            #     'model_name': "mistral-large-latest"
+            # },
+            # {
+            #     'severity': "10",
+            #     'stream_completion': "True",
+            #     'api_endpoint': "Mistral AI",
+            #     'model_name': "mistral-large-latest"
+            # },
+            # {
+            #     'severity': "10",
+            #     'stream_completion': "False",
+            #     'api_endpoint': "OpenRouter",
+            #     'model_name': "google/gemini-2.0-flash-001",
+            # },
+            # {
+            #     'severity': "10",
+            #     'stream_completion': "True",
+            #     'api_endpoint': "OpenRouter",
+            #     'model_name': "google/gemini-2.0-flash-001",
+            # },
+            # {
+            #     'severity': "10",
             #     'stream_completion': "False",
             #     'api_endpoint': "vLLM",
             #     'model_name': "ministral-8b",
             # },
             # {
-            #     'logger_level': "10",
+            #     'severity': "10",
             #     'stream_completion': "True",
             #     'api_endpoint': "vLLM",
             #     'model_name': "ministral-8b"
@@ -139,9 +140,11 @@ class TestNode(Node):
             if True:
                 self.get_logger().debug("Starting test 'Set model parameters'")
 
-                success, message = self.api_director.set_parameters(completions_id,
-                                                                    list(params.keys()),
-                                                                    list(params.values()))
+                success, message = self.api_director.set_parameters(
+                    completions_id=completions_id,
+                    parameter_names=list(params.keys()),
+                    parameter_values=list(params.values())
+                )
                 assert success, message
 
                 self.get_logger().info("Passed test 'Set model parameters'")
@@ -150,16 +153,20 @@ class TestNode(Node):
             if True:
                 self.get_logger().debug("Starting test 'Basic text completion'")
 
-                success, message, text_response, tool_calls = self.api_director.prompt(completions_id=completions_id,
-                                                                                       text='You are not allowed to tell jokes.',
-                                                                                       role="system",
-                                                                                       reset_context=True,
-                                                                                       response_type="none")
+                success, message, _ = self.api_director.prompt(
+                    completions_id=completions_id,
+                    text='You are not allowed to tell jokes.',
+                    role="system",
+                    reset_context=True,
+                    response_type="none"
+                )
                 assert success, message
 
-                success, message, text_response, tool_calls = self.api_director.prompt(completions_id=completions_id,
-                                                                                       text='Tell me a joke about students.',
-                                                                                       response_type="text")
+                success, message, _ = self.api_director.prompt(
+                    completions_id=completions_id,
+                    text='Tell me a joke about students.',
+                    response_type="text"
+                )
                 assert success, message
 
                 self.get_logger().info("Passed test 'Basic text completion'")
@@ -210,36 +217,50 @@ class TestNode(Node):
                         }
                     }
                 ]
-                success, message = self.api_director.set_tools(completions_id=completions_id, tools=tools)
+                success, message = self.api_director.set_tools(
+                    completions_id=completions_id,
+                    tools=tools
+                )
                 assert success, message
 
-                success, message, text_response, tool_calls_a = self.api_director.prompt(completions_id=completions_id,
-                                                                                         text='You are a helpful tool assistant.',
-                                                                                         role='system',
-                                                                                         response_type='none',
-                                                                                         reset_context=True)
+                success, message, _ = self.api_director.prompt(
+                    completions_id=completions_id,
+                    text='You are a helpful tool assistant.',
+                    role='system',
+                    response_type='none',
+                    reset_context=True
+                )
                 assert success, message
 
-                success, message, text_response, tool_calls = self.api_director.prompt(completions_id=completions_id,
-                                                                                       text='Tell Michael how warm it is outside.',
-                                                                                       # response_type='get_current_weather', # not supported by mistral
-                                                                                       response_type='auto',
-                                                                                       reset_context=False)
+                success, message, completion = self.api_director.prompt(
+                    completions_id=completions_id,
+                    text='Tell Michael how warm it is outside.',
+                    # response_type='get_current_weather', # not supported by mistral
+                    response_type='auto',
+                    reset_context=False
+                )
                 assert success, message
 
+                assert 'tools' in completion
+                tool_calls = completion['tools']
                 assert isinstance(tool_calls, list)
                 assert len(tool_calls) == 1
                 assert isinstance(tool_calls[0], dict)
                 assert "id" in tool_calls[0] and "name" in tool_calls[0] and "arguments" in tool_calls[0]
                 assert tool_calls[0]["name"] == "get_current_weather"
 
-                success, message, text_response, tool_calls = self.api_director.prompt(completions_id=completions_id,
-                                                                                       role="tool",
-                                                                                       text='The sun is shining and it is 42°C.',
-                                                                                       tool_response_id=tool_calls[0]['id'],
-                                                                                       response_type='always')
+                success, message, completion = self.api_director.prompt(
+                    completions_id=completions_id,
+                    role="tool",
+                    text='The sun is shining and it is 42°C.',
+                    tool_response_id=tool_calls[0]['id'],
+                    response_type='always'
+                )
                 assert success, message
 
+                assert 'tools' in completion
+                tool_calls = completion['tools']
+                assert isinstance(tool_calls, list)
                 assert len(tool_calls) == 1
                 assert isinstance(tool_calls[0], dict)
                 assert "id" in tool_calls[0] and "name" in tool_calls[0] and "arguments" in tool_calls[0]
@@ -247,14 +268,19 @@ class TestNode(Node):
                 assert "person" in tool_calls[0]["arguments"] and "text" in tool_calls[0]["arguments"] and "requires_answer" in tool_calls[0]["arguments"]
                 assert tool_calls[0]["arguments"]["person"] == "Michael"
 
-                success, message, text_response, tool_calls = self.api_director.prompt(completions_id=completions_id,
-                                                                                       role="tool",
-                                                                                       text='Ok, thank you.',
-                                                                                       tool_response_id=tool_calls[0]['id'],
-                                                                                       response_type='speak')
+                success, message, completion = self.api_director.prompt(
+                    completions_id=completions_id,
+                    role="tool",
+                    text='Ok, thank you.',
+                    tool_response_id=tool_calls[0]['id'],
+                    response_type='speak'
+                )
 
                 assert success, message
 
+                assert 'tools' in completion
+                tool_calls = completion['tools']
+                assert isinstance(tool_calls, list)
                 assert len(tool_calls) == 1
                 assert isinstance(tool_calls[0], dict)
                 assert "id" in tool_calls[0] and "name" in tool_calls[0] and "arguments" in tool_calls[0]

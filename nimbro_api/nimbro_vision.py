@@ -2,37 +2,34 @@
 
 import os
 import re
-import copy
 import json
 import time
 import threading
 import traceback
 
-try:
-    import pybase64 as base64
-except ImportError:
-    import base64
 import requests
 
 import rclpy
 from rclpy.node import Node
 from rclpy.callback_groups import ReentrantCallbackGroup
-from rcl_interfaces.msg import ParameterDescriptor, ParameterType, IntegerRange
 
-from nimbro_api_interfaces.srv import GetNimbroVision
-from nimbro_api.utils.node import start_and_spin_node
-from nimbro_api.utils.parameter_handler import ParameterHandler
+from nimbro_api_interfaces.srv import NimbroVisionGet
+from nimbro_api.misc.common import filter_api_endpoint
+
+from nimbro_utils.lazy import start_and_spin_node, ParameterHandler, Logger, remove_whitespace, is_base64, is_url, read_as_b64
 
 ### <Parameter Defaults>
 
 node_name = "nimbro_vision"
-logger_level = 10
+severity = 10
 
 probe_api_connection = True
 probe_model_state = True
 api_endpoint = "localhost"
 
 ## non-params
+
+line_length = 150
 
 api_endpoints = {
     'localhost': {
@@ -55,6 +52,27 @@ api_endpoints = {
         'florence2_url': "http://localhost:9004",
         'florence2_key_type': "environment",
         'florence2_key_value': "NIMBRO_VISION_API_KEY"
+    },
+    'AIS': {
+        'mmgroundingdino_url': "https://api-code.ais.uni-bonn.de/v1/vision/mmgroundingdino",
+        'mmgroundingdino_key_type': "environment",
+        'mmgroundingdino_key_value': "NIMBRO_VISION_API_KEY",
+
+        'sam2_realtime_url': "https://api-code.ais.uni-bonn.de/v1/vision/sam2_realtime",
+        'sam2_realtime_key_type': "environment",
+        'sam2_realtime_key_value': "NIMBRO_VISION_API_KEY",
+
+        'dam_url': "https://api-code.ais.uni-bonn.de/v1/vision/dam",
+        'dam_key_type': "environment",
+        'dam_key_value': "NIMBRO_VISION_API_KEY",
+
+        'florence2_url': "https://api-code.ais.uni-bonn.de/v1/vision/florence2",
+        'florence2_key_type': "environment",
+        'florence2_key_value': "NIMBRO_VISION_API_KEY",
+
+        'kosmos2_url': "https://api-code.ais.uni-bonn.de/v1/vision/kosmos2",
+        'kosmos2_key_type': "environment",
+        'kosmos2_key_value': "NIMBRO_VISION_API_KEY",
     }
 }
 
@@ -64,8 +82,13 @@ class NimbroVision(Node):
 
     def __init__(self, name=node_name, *, context=None, **kwargs):
         super().__init__(name, context=context, **kwargs)
+
         self.node_name = self.get_name()
         self.node_namespace = self.get_namespace()
+
+        self._logger = Logger(self)
+
+        # initialize endpoints
 
         self.model_names = ["mmgroundingdino", "sam2_realtime", "dam", "kosmos2", "florence2"]
         self.endpoint_required_sets = [{f"{model}_url", f"{model}_key_type", f"{model}_key_value"} for model in self.model_names]
@@ -139,152 +162,101 @@ class NimbroVision(Node):
                 f"Only full sets of '<model>_<n?>_(url|key_type|key_value)' are allowed."
             )
 
+        self.filter_api_endpoint = filter_api_endpoint.__get__(self)
+
         self.api_endpoints = api_endpoints
         self.endpoint_probes = {}
+        self.model_locks = {}
+
+        # declare parameters
 
         self.parameter_handler = ParameterHandler(self)
-        self.add_on_set_parameters_callback(self.parameter_handler.parameter_callback)
 
-        descriptor = ParameterDescriptor()
-        descriptor.name = "logger_level"
-        descriptor.type = ParameterType.PARAMETER_INTEGER
-        descriptor.description = "Logger level of this node (DEBUG=10, INFO=20, WARN=30, ERROR=40, FATAL=50)."
-        descriptor.read_only = False
-        int_range = IntegerRange()
-        int_range.from_value = 10
-        int_range.to_value = 50
-        int_range.step = 10
-        descriptor.integer_range.append(int_range)
-        self.parameter_descriptors.append(descriptor)
-        self.declare_parameter(descriptor.name, logger_level, descriptor)
+        self.parameter_handler.declare(
+            name="severity",
+            dtype=int,
+            default_value=severity,
+            description="Logging severity of node logger.",
+            read_only=False,
+            range_min=10,
+            range_max=50,
+            range_step=10
+        )
 
-        descriptor = ParameterDescriptor()
-        descriptor.name = "probe_api_connection"
-        descriptor.type = ParameterType.PARAMETER_BOOL
-        descriptor.description = "Probes the API endpoint to validate the API key and model name."
-        descriptor.read_only = False
-        self.parameter_descriptors.append(descriptor)
-        self.declare_parameter(descriptor.name, probe_api_connection, descriptor)
+        self.parameter_handler.declare(
+            name="probe_api_connection",
+            dtype=bool,
+            default_value=probe_api_connection,
+            description="Probes the API endpoint to validate the API key and model name.",
+            read_only=False
+        )
 
-        descriptor = ParameterDescriptor()
-        descriptor.name = "probe_model_state"
-        descriptor.type = ParameterType.PARAMETER_BOOL
-        descriptor.description = "Probes the model state before inference and loads the requested model if required."
-        descriptor.read_only = False
-        self.parameter_descriptors.append(descriptor)
-        self.declare_parameter(descriptor.name, probe_api_connection, descriptor)
+        self.parameter_handler.declare(
+            name="probe_model_state",
+            dtype=bool,
+            default_value=probe_model_state,
+            description="Probes the model state before inference and loads the requested model if required.",
+            read_only=False
+        )
 
-        descriptor = ParameterDescriptor()
-        descriptor.name = "api_endpoint"
-        descriptor.type = ParameterType.PARAMETER_STRING
-        descriptor.description = f"Sets the API endpoint defining URLs, key type and value. Must be a valid JSON encoded dictionary or a name in {list(api_endpoints.keys())}."
-        descriptor.read_only = False
-        self.parameter_descriptors.append(descriptor)
-        self.declare_parameter(descriptor.name, api_endpoint, descriptor)
+        self.parameter_handler.declare(
+            name="api_endpoint",
+            dtype=str,
+            default_value=api_endpoint,
+            description=f"Sets the API endpoint defining URLs, key type and value. Must be a valid JSON encoded dictionary or a name in {list(api_endpoints.keys())}.",
+            read_only=False
+        )
 
-        self.parameter_handler.all_declared()
+        # create interfaces
 
         qos_profile = rclpy.qos.QoSProfile(reliability=rclpy.qos.ReliabilityPolicy.RELIABLE, history=rclpy.qos.HistoryPolicy.KEEP_LAST, depth=7)
 
-        self.srv_mmgd = self.create_service(GetNimbroVision, f"{self.node_namespace}/{self.node_name}/mmgroundingdino".replace("//", "/"), self.mmgroundingdino_callback, qos_profile=qos_profile, callback_group=ReentrantCallbackGroup())
-        self.srv_sam2_realtime_update = self.create_service(GetNimbroVision, f"{self.node_namespace}/{self.node_name}/sam2_realtime_update".replace("//", "/"), self.sam2_realtime_update_callback, qos_profile=qos_profile, callback_group=ReentrantCallbackGroup())
-        self.srv_sam2_realtime_track = self.create_service(GetNimbroVision, f"{self.node_namespace}/{self.node_name}/sam2_realtime_track".replace("//", "/"), self.sam2_realtime_track_callback, qos_profile=qos_profile, callback_group=ReentrantCallbackGroup())
-        self.srv_dam = self.create_service(GetNimbroVision, f"{self.node_namespace}/{self.node_name}/dam".replace("//", "/"), self.dam_callback, qos_profile=qos_profile, callback_group=ReentrantCallbackGroup())
-        self.srv_kosmos2 = self.create_service(GetNimbroVision, f"{self.node_namespace}/{self.node_name}/kosmos2".replace("//", "/"), self.kosmos2_callback, qos_profile=qos_profile, callback_group=ReentrantCallbackGroup())
-        self.srv_florence2 = self.create_service(GetNimbroVision, f"{self.node_namespace}/{self.node_name}/florence2".replace("//", "/"), self.florence2_callback, qos_profile=qos_profile, callback_group=ReentrantCallbackGroup())
+        self.srv_mmgd = self.create_service(NimbroVisionGet, f"{self.node_namespace}/{self.node_name}/mmgroundingdino".replace("//", "/"), self.mmgroundingdino_callback, qos_profile=qos_profile, callback_group=ReentrantCallbackGroup())
+        self.srv_sam2_realtime_update = self.create_service(NimbroVisionGet, f"{self.node_namespace}/{self.node_name}/sam2_realtime_update".replace("//", "/"), self.sam2_realtime_update_callback, qos_profile=qos_profile, callback_group=ReentrantCallbackGroup())
+        self.srv_sam2_realtime_track = self.create_service(NimbroVisionGet, f"{self.node_namespace}/{self.node_name}/sam2_realtime_track".replace("//", "/"), self.sam2_realtime_track_callback, qos_profile=qos_profile, callback_group=ReentrantCallbackGroup())
+        self.srv_dam = self.create_service(NimbroVisionGet, f"{self.node_namespace}/{self.node_name}/dam".replace("//", "/"), self.dam_callback, qos_profile=qos_profile, callback_group=ReentrantCallbackGroup())
+        self.srv_kosmos2 = self.create_service(NimbroVisionGet, f"{self.node_namespace}/{self.node_name}/kosmos2".replace("//", "/"), self.kosmos2_callback, qos_profile=qos_profile, callback_group=ReentrantCallbackGroup())
+        self.srv_florence2 = self.create_service(NimbroVisionGet, f"{self.node_namespace}/{self.node_name}/florence2".replace("//", "/"), self.florence2_callback, qos_profile=qos_profile, callback_group=ReentrantCallbackGroup())
 
-        self.get_logger().info("Node started")
+        self._logger.info("Node started")
 
     def __del__(self):
-        self.get_logger().info("Node shutdown")
+        self._logger.info("Node shutdown")
 
-    def parameter_changed(self, parameter):
-        success = True
-        reason = ""
+    def filter_parameter(self, name, value, is_declared):
+        message = None
 
-        if parameter.name == "logger_level":
-            self.logger_level = parameter.value
-            rclpy.logging.set_logger_level(f"{self.node_namespace}/{self.node_name}".replace("//", "/")[1:].replace("/", "."), rclpy.logging.LoggingSeverity(self.logger_level))
+        if name == "severity":
+            self._logger.set_settings(settings={'severity': value})
 
-        elif parameter.name == "probe_api_connection":
-            if not self.setup_finished or self.probe_api_connection != parameter.value:
-                self.probe_api_connection = parameter.value
-                if self.probe_api_connection and self.setup_finished:
-                    if self.endpoint_probes.get(self.api_endpoint) is None:
-                        success, reason = self.probe_models_api(self.api_endpoint)
-                    else:
-                        self.get_logger().debug(f"Probing API for endpoint '{self.api_endpoint}' is not required")
+        elif name == "probe_api_connection":
+            if is_declared and value != self.parameters.probe_api_connection:
+                self._logger.debug("Reset endpoint probes")
+                self.endpoint_probes = {}
 
-        elif parameter.name == "probe_model_state":
-            self.probe_model_state = parameter.value
-
-        elif parameter.name == "api_endpoint":
-            probe = None
-            if parameter.value in list(self.api_endpoints.keys()):
-                json_object = None
-                if self.endpoint_probes.get(parameter.value) is None:
-                    probe = parameter.value
+        elif name == "api_endpoint":
+            for model in self.model_locks:
+                self.model_locks[model].acquire()
+            value, message = self.filter_api_endpoint(name, value, line_length)
+            if value is None:
+                for model in self.model_locks:
+                    self.model_locks[model].release()
             else:
-                success, reason, json_object = self.validate_api_endpoint(parameter.value)
-                if success:
-                    if json_object['name'] in list(self.api_endpoints.keys()):
-                        json_object_without_name = copy.deepcopy(json_object)
-                        del json_object_without_name['name']
-                        for key in json_object_without_name:
-                            if self.api_endpoints[json_object['name']][key] != json_object_without_name[key]:
-                                probe = json_object
-                    else:
-                        probe = json_object
+                models = [key[:-4] for key in self.api_endpoints[value] if key[-4:] == "_url"]
+                self._logger.debug(f"Model types featured by endpoint '{value}': {models}")
+                model_locks = {}
+                for model in models:
+                    model_locks[model] = threading.Lock()
+                self.model_locks = model_locks
 
-            if success and self.probe_api_connection is True:
-                if probe is None:
-                    self.get_logger().debug(f"Probing API for endpoint '{parameter.value if json_object is None else json_object['name']}' is not required")
-                else:
-                    success, reason = self.probe_models_api(probe)
-
-            if success:
-                if self.setup_finished:
-                    for model in self.model_locks:
-                        if self.model_locks[model].locked():
-                            self.get_logger().info(f"Waiting for model '{model}' to be released before updating endpoint")
-                            self.model_locks[model].acquire()
-
-                names_before = list(self.api_endpoints.keys())
-                dicts_before = copy.deepcopy(self.api_endpoints)
-
-                if json_object is None:
-                    self.api_endpoint = parameter.value
-                else:
-                    self.api_endpoint = json_object['name']
-                    self.api_endpoints[self.api_endpoint] = json_object
-                    del self.api_endpoints[self.api_endpoint]['name']
-
-                if self.api_endpoint in names_before:
-                    if self.api_endpoints[self.api_endpoint] != dicts_before[self.api_endpoint]:
-                        self.get_logger().info(f"Updated API endpoint '{self.api_endpoint}'")
-                else:
-                    self.get_logger().info(f"Created new API endpoint '{self.api_endpoint}'")
-
-                self.endpoint_models = {}
-                self.model_locks = {}
-                for endpoint_name in self.api_endpoints:
-                    self.endpoint_models[endpoint_name] = []
-                    for key in self.api_endpoints[endpoint_name]:
-                        if key.endswith("_url"):
-                            self.endpoint_models[endpoint_name].append(key[:-4])
-                            self.model_locks[key[:-4]] = threading.Lock()
-                self.get_logger().debug(f"Models: {self.endpoint_models}")
-        else:
-            return None, None
-
-        return success, reason
+        return value, message
 
     def validate_api_endpoint(self, api_endpoint):
         try:
             json_object = json.loads(api_endpoint)
         except Exception:
             success = False
-            message = f"Value must be a name of an existing endpoint in {list(self.api_endpoints.keys())} or a valid JSON encoded dictionary containing a new endpoint."
+            message = f"Value must be a valid JSON encoded dictionary containing a new endpoint or a name of an existing endpoint: {list(self.api_endpoints.keys())}"
             json_object = None
         else:
             if not isinstance(json_object, dict):
@@ -352,74 +324,102 @@ class NimbroVision(Node):
                             message = f"JSON encoded endpoint contains unexpected keys: {sorted(extras)}. Only full key sets per model instance are allowed."
                         else:
                             success = True
-                            message = ""
+                            message = None
 
         return success, message, json_object
 
     # API requests
 
-    def probe_models_api(self, api_endpoint):
-        if isinstance(api_endpoint, str):
-            api_endpoint_name = api_endpoint
-            api_endpoint = self.api_endpoints[api_endpoint]
-        else:
-            api_endpoint_name = api_endpoint['name']
+    def probe_models_api(self, api_endpoint, model):
+        api_endpoint_name = api_endpoint
+        api_endpoint = self.api_endpoints[api_endpoint]
 
         success = True
-        message = ""
 
-        for key in api_endpoint:
-            if key[-4:] == "_url":
-                model = key[:-4]
-            else:
-                continue
-
-            if api_endpoint[f"{model}_key_type"] == "environment":
-                var_name = api_endpoint[f"{model}_key_value"]
-                api_key = os.getenv(var_name)
-                if api_key is None:
-                    success = False
-                    message = f"Error while probing API: Failed to read API key from environment variable '{var_name}')."
-                    break
-            else:
-                api_key = api_endpoint[f"{model}_key_value"]
-
-            if success:
-                url = api_endpoint[f"{model}_url"]
-                self.get_logger().debug(f"Probing model '{model}' using URL '{url}/model_flavors' and key '{api_key}' of endpoint '{api_endpoint_name}'")
-                try:
-                    response = requests.get(f"{url}/model_flavors", headers={"Authorization": f"Bearer {api_key}"})
-                except Exception as e:
-                    success = False
-                    message = f"Error while probing API: Failed to get status request: {repr(e)}"
-                    break
-                else:
-                    if response.status_code != 200:
-                        success = False
-                        message = f"Error while probing API: Request failed with status code '{response.status_code}': {response.text}"
-                        break
-                    else:
-                        available_flavors = response.json().get('flavors', [])
-                        if len(available_flavors) == 0:
-                            self.get_logger().warn(f"There are no flavors available for model '{model}'")
-                        else:
-                            self.get_logger().debug(f"Available flavors of model '{model}': {available_flavors}")
-                        if api_endpoint_name not in self.endpoint_probes:
-                            self.endpoint_probes[api_endpoint_name] = {}
-                        self.endpoint_probes[api_endpoint_name][f"{model}_flavors"] = available_flavors
-                        self.endpoint_probes[api_endpoint_name]['stamp'] = time.time()
+        if api_endpoint[f"{model}_key_type"] == "environment":
+            var_name = api_endpoint[f"{model}_key_value"]
+            api_key = os.getenv(var_name)
+            if api_key is None:
+                success = False
+                message = f"Failed to read API key from environment variable '{var_name}'."
+        else:
+            api_key = api_endpoint[f"{model}_key_value"]
 
         if success:
-            self.get_logger().debug(f"Probes: {self.endpoint_probes}")
-        else:
-            self.get_logger().error(message)
+            url = f"{api_endpoint[model + '_url']}/model_flavors"
+            self._logger.debug(f"Probing Models API of model '{model}' using URL '{url}' of endpoint '{api_endpoint_name}' using key '{api_key}'")
+            try:
+                response = requests.get(url, headers={"Authorization": f"Bearer {api_key}"})
+            except Exception as e:
+                success = False
+                message = f"Failed to retrieve available '{model}' models: {repr(e)}"
+            else:
+                if response.status_code != 200:
+                    success = False
+                    message = f"Received unexpected HTTP status code '{response.status_code}' from Models API: {response.text}"
+                    message = remove_whitespace(string=message, reduce_to_single_space=True)
+                else:
+                    # self._logger.debug(f"{json.dumps(response.json(), indent=2)}")
+                    available_models = response.json().get('flavors', [])
+                    if len(available_models) == 0:
+                        message = f"There are no '{model}' model flavors served under API endpoint '{api_endpoint_name}'."
+                        self._logger.warn(message)
+                    else:
+                        message = f"'{model}' models flavors served under API endpoint '{api_endpoint_name}': {available_models}."
+                        self._logger.debug(message)
+                        if api_endpoint_name not in self.endpoint_probes:
+                            self.endpoint_probes[api_endpoint_name] = {}
+                        self.endpoint_probes[api_endpoint_name][model] = {'models': available_models, 'stamp': time.time()}
+
+        if not success:
+            self._logger.error(message)
             if api_endpoint_name in self.endpoint_probes:
-                del self.endpoint_probes[api_endpoint_name]
+                if model in self.endpoint_probes[api_endpoint_name]:
+                    del self.endpoint_probes[api_endpoint_name][model]
+                if len(self.endpoint_probes[api_endpoint_name]) == 0:
+                    del self.endpoint_probes[api_endpoint_name]
+
+        return success, message
+
+    def validate_connection(self, model, flavor):
+        probe = False
+        if self.parameters.api_endpoint in self.endpoint_probes:
+            if model in self.endpoint_probes[self.parameters.api_endpoint]:
+                if flavor in self.endpoint_probes[self.parameters.api_endpoint][model]['models']:
+                    success = True
+                    message = f"Model '{model}' serves flavor '{flavor}' under API endpoint '{self.parameters.api_endpoint}'."
+                    self._logger.debug(message)
+                else:
+                    success = False
+                    message = f"Model '{model}' is not serving flavor '{flavor}' under API endpoint '{self.parameters.api_endpoint}': {self.endpoint_probes[self.parameters.api_endpoint][model]['models']}"
+                    self._logger.error(message)
+            else:
+                probe = True
+        else:
+            probe = True
+
+        if probe:
+            success, message = self.probe_models_api(api_endpoint=self.parameters.api_endpoint, model=model)
+            if success:
+                if self.parameters.api_endpoint in self.endpoint_probes:
+                    if model in self.endpoint_probes[self.parameters.api_endpoint]:
+                        if flavor in self.endpoint_probes[self.parameters.api_endpoint][model]['models']:
+                            success = True
+                            message = f"Model '{model}' serves flavor '{flavor}' under API endpoint '{self.parameters.api_endpoint}'."
+                            self._logger.debug(message)
+                        else:
+                            success = False
+                            message = f"Model '{model}' is not serving flavor '{flavor}' under API endpoint '{self.parameters.api_endpoint}': {self.endpoint_probes[self.parameters.api_endpoint][model]['models']}"
+                            self._logger.error(message)
+                    else:
+                        success = False
+                else:
+                    success = False
 
         return success, message
 
     def handle_request(self, model, request, response):
-        self.get_logger().debug(f"handle_request('{model}'): start")
+        self._logger.debug(f"handle_request('{model}'): start")
         stamp_start = time.perf_counter()
         response.success = True
 
@@ -432,22 +432,9 @@ class NimbroVision(Node):
             else:
                 model = "sam2_realtime"
 
-        api_endpoint = copy.deepcopy(self.api_endpoints[self.api_endpoint])
-
-        # check if model is defnied in endpoint
+        # resolve model name
         if request.model_id > 0:
             model = f"{model}_{request.model_id}"
-        if model not in self.endpoint_models[self.api_endpoint]:
-            response.success = False
-            response.message = f"Model '{model}' is not a known model: {self.endpoint_models[self.api_endpoint]}."
-
-        # check if requested flavor is valid
-        if response.success:
-            if self.probe_api_connection and not sam_track:
-                if request.flavor not in self.endpoint_probes.get(self.api_endpoint, {}).get(f"{model}_flavors", []):
-                    response.success = False
-                    flavors = self.endpoint_probes[self.api_endpoint][f"{model}_flavors"]
-                    response.message = f"Model flavor '{request.flavor}' is not in list of available model flavors {flavors}."
 
         # check request
         if response.success:
@@ -458,73 +445,103 @@ class NimbroVision(Node):
                 response.message = f"Failed to parse request field 'data' as JSON: {repr(e)}"
             else:
                 response.success = True
-                self.get_logger().debug(f"Parsed '{model}' request as JSON")
+                self._logger.debug("Parsed request data as JSON")
 
         # encode images if required
         if response.success:
             response.success = False
             if isinstance(data.get('image'), str):
-                if os.path.isfile(data['image']):
-                    self.get_logger().debug(f"Encoding image '{data['image']}' into Base64")
-                    try:
-                        with open(data['image'], "rb") as image_file:
-                            base64_image = base64.b64encode(image_file.read()).decode('utf-8')
-                    except Exception as e:
-                        response.message = f"Failed to encode image file '{data['image']}' into Base64: {repr(e)}"
-                    else:
-                        response.success = True
-                        data['image'] = base64_image
-                else:
+                if is_base64(data['image']):
                     response.success = True
-                    self.get_logger().debug("Assuming image is Base64 encoded")
+                    self._logger.debug("Image is Base64-encoded")
+                elif is_url(data['image']):
+                    response.success = True
+                    self._logger.debug("Image is a valid URL")
+                elif os.path.exists(data['image']):
+                    if os.path.isfile(data['image']):
+                        success, message, base64_image = read_as_b64(
+                            file_path=data['image'],
+                            name="image",
+                            logger=self._logger
+                        )
+                        if success:
+                            response.success = True
+                            data['image'] = base64_image
+                        else:
+                            response.message = f"Failed to Base64-encode image file '{data['image']}': {message}"
+                    else:
+                        response.message = f"Failed to Base64-encode image file '{data['image']}' because it is a folder."
+                else:
+                    response.message = f"Image '{data['image']}' is not Base64-encoded, a valid local path or a web URL."
             elif isinstance(data.get('images'), list) and all(isinstance(image, str) for image in data['images']):
                 for i, image_path in enumerate(data['images']):
-                    if os.path.isfile(image_path):
-                        self.get_logger().debug(f"Encoding image '{image_path}' into Base64")
-                        try:
-                            with open(image_path, "rb") as image_file:
-                                base64_image = base64.b64encode(image_file.read()).decode('utf-8')
-                        except Exception as e:
-                            response.message = f"Failed to encode image file '{image_path}' into Base64: {repr(e)}"
-                            break
+                    if is_base64(image_path):
+                        self._logger.debug(f"Image '{i + 1}' of '{len(data['images'])}' is Base64-encoded")
+                    elif is_url(image_path):
+                        response.success = True
+                        self._logger.debug(f"Image '{i + 1}' of '{len(data['images'])}' is a valid URL")
+                    elif os.path.exists(image_path):
+                        if os.path.isfile(image_path):
+                            success, message, base64_image = read_as_b64(
+                                file_path=image_path,
+                                name=f"image '{i + 1}' of '{len(data['images'])}'",
+                                logger=self._logger
+                            )
+                            if success:
+                                response.success = True
+                                data['images'][i] = base64_image
+                            else:
+                                response.message = f"Failed to Base64-encode image file '{image_path}': {message}"
+                                break
                         else:
-                            data['images'][i] = base64_image
+                            response.message = f"Failed to Base64-encode image file '{image_path}' because it is a folder."
+                            break
                     else:
-                        self.get_logger().debug(f"Assuming image '{i + 1}' of '{len(data['images'])}' is Base64 encoded")
+                        response.message = f"Image '{image_path}' is neither Base64-encoded, a valid local path, or a web URL."
+                        break
                 else:
                     response.success = True
             else:
                 response.success = True
 
-        # retrieve API key
-        if response.success:
+        # check if model is defined in endpoint
+        if model not in self.model_locks:
             response.success = False
-            url = api_endpoint[f"{model}_url"]
-            if api_endpoint[f"{model}_key_type"] == "environment":
-                api_key = os.getenv(api_endpoint[f"{model}_key_value"])
-                if api_key is None:
-                    var = api_endpoint[f"{model}_key_value"]
-                    response.message = f"Failed to read API key from environment variable '{var}')."
-                else:
-                    response.success = True
-            else:
-                response.success = True
-                api_key = api_endpoint[f"{model}_key_value"]
-            if api_key is not None:
-                self.get_logger().debug(f"Retrieved '{model}' key '{api_key}'")
+            response.message = f"Model '{model}' is served under API endpoint '{self.parameters.api_endpoint}': {list(self.model_locks.keys())}"
 
         # lock model
         if response.success:
             if self.model_locks[model].locked():
-                self.get_logger().info(f"Waiting for model '{model}' to be released before using it")
+                self._logger.info(f"Waiting for model '{model}' to be released before using it")
             self.model_locks[model].acquire()
 
-        # retrieve loaded state/flavor
+        # validate connection
+        if response.success and self.parameters.probe_api_connection and not sam_track:
+            response.success, response.message = self.validate_connection(model=model, flavor=request.flavor)
+
+        # retrieve API key
         if response.success:
-            if self.probe_model_state and not sam_track:
+            response.success = False
+            url = self.api_endpoints[self.parameters.api_endpoint][f"{model}_url"]
+            if self.api_endpoints[self.parameters.api_endpoint][f"{model}_key_type"] == "environment":
+                api_key = os.getenv(self.api_endpoints[self.parameters.api_endpoint][f"{model}_key_value"])
+                if api_key is None:
+                    var = self.api_endpoints[self.parameters.api_endpoint][f"{model}_key_value"]
+                    response.message = f"Failed to read API key from environment variable '{var}'."
+                else:
+                    response.success = True
+            else:
+                response.success = True
+                api_key = self.api_endpoints[self.parameters.api_endpoint][f"{model}_key_value"]
+            if api_key is not None:
+                self._logger.debug(f"Retrieved '{model}' key '{api_key}'")
+
+        # retrieve loaded state/flavor
+        if response.success and not sam_track:
+            if self.parameters.probe_model_state:
 
                 response.success = False
-                self.get_logger().debug(f"Requesting '{model}' endpoint status via URL '{url}/status'")
+                self._logger.debug(f"Requesting '{model}' status via URL '{url}/status'")
                 try:
                     result = requests.get(f"{url}/status", headers={"Authorization": f"Bearer {api_key}"})
                 except Exception as e:
@@ -534,31 +551,31 @@ class NimbroVision(Node):
                         load = False
                         result = result.json()
                         if model.find(result.get('model_family')) == -1:
-                            response.message = f"Provided URL '{url}' hosts wrong model type '{result['model_family']}'."
+                            response.message = f"URL '{url}' hosts wrong model type '{result['model_family']}'."
                         else:
                             response.success = True
                             if result.get('status') is None:
                                 load = True
-                                self.get_logger().info(f"Provided URL '{url}' currently hosts no model flavor instead of '{request.flavor}'")
+                                self._logger.debug(f"URL '{url}' currently hosts no model flavor instead of '{request.flavor}'")
                             elif result.get('status', {}).get('flavor') != request.flavor:
                                 load = True
-                                self.get_logger().info(f"Provided URL '{url}' currently hosts model flavor '{result.get('status', {}).get('flavor')}' instead of '{request.flavor}'")
+                                self._logger.debug(f"URL '{url}' currently hosts model flavor '{result.get('status', {}).get('flavor')}' instead of '{request.flavor}'")
                             else:
-                                self.get_logger().debug(f"Provided URL '{url}' currently hosts the requested model flavor '{request.flavor}'")
+                                self._logger.debug(f"URL '{url}' currently hosts the requested model flavor '{request.flavor}'")
                     else:
                         response.message = f"Status request failed with status code '{result.status_code}': {result.text}"
 
                 # load requested model flavor if required
                 if response.success and load:
                     response.success = False
-                    self.get_logger().debug(f"Requesting '{model}' endpoint via URL '{url}/load' to load model '{request.flavor}'")
+                    self._logger.info(f"Loading '{model}' flavor '{request.flavor}'")
                     try:
                         result = requests.post(f"{url}/load", json={'flavor': request.flavor}, headers={"Authorization": f"Bearer {api_key}"})
                     except Exception as e:
                         response.message = f"Failed to POST load request: {repr(e)}"
                     else:
                         if result.status_code == 200:
-                            self.get_logger().info(f"Successfully loaded '{model}' model flavor '{request.flavor}': {result.text}")
+                            self._logger.info(f"Loaded '{model}' flavor '{request.flavor}': {result.text}")
                             response.success = True
                         else:
                             response.message = f"Load request failed with status code '{result.status_code}': {result.text}"
@@ -570,7 +587,7 @@ class NimbroVision(Node):
                 suffix = "update"
             else:
                 suffix = "infer"
-            self.get_logger().debug(f"Requesting endpoint '{model}' inference via URL '{url}/{suffix}'")
+            self._logger.debug(f"Starting '{model}' inference via URL '{url}/{suffix}'")
             try:
                 result = requests.post(f"{url}/{suffix}", json=data, headers={"Authorization": f"Bearer {api_key}"})
             except Exception as e:
@@ -580,22 +597,28 @@ class NimbroVision(Node):
                     response.result = result.content.decode('utf-8')
                     response.success = True
                     duration = time.perf_counter() - stamp_start
-                    self.get_logger().debug(f"Successfully inferred '{model}' in '{duration:.3f}s': {response.result[:80]}{'...' if len(result.text) >= 80 else ''}")
-                    response.message = f"Successfully retrieved '{model}' {'inference' if suffix == 'infer' else 'update'} response after '{duration:.3f}s'."
+                    self._logger.debug(f"Response: {response.result[:80]}{'...' if len(result.text) >= 80 else ''}")
+                    if sam_track:
+                        response.message = f"Retrieved tracking response from model '{model}' after '{duration:.3f}s'."
+                    else:
+                        response.message = f"Retrieved {'inference' if suffix == 'infer' else 'update'} response from model '{model}' with flavor '{request.flavor}' after '{duration:.3f}s'."
                 else:
-                    response.message = f"Model '{model}' {'inference' if suffix == 'infer' else 'update'} failed with status code '{result.status_code}': {result.text}"
+                    if sam_track:
+                        response.message = f"Tracking failed with status code '{result.status_code}': {result.text}"
+                    else:
+                        response.message = f"{'Inference' if suffix == 'infer' else 'Update'} failed with status code '{result.status_code}': {result.text}"
 
         # log
         if response.success:
-            self.get_logger().info(response.message)
+            self._logger.info(response.message)
         else:
-            self.get_logger().error(f"Error occurred while using '{model}': {response.message}")
+            self._logger.error(f"Error occurred while using '{model}': {response.message}")
 
         # release model
         if model in self.model_locks and self.model_locks[model].locked():
             self.model_locks[model].release()
 
-        self.get_logger().debug(f"handle_request('{model}'): end after '{time.perf_counter() - stamp_start:.3f}s'")
+        self._logger.debug(f"handle_request('{model}'): end after '{time.perf_counter() - stamp_start:.3f}s'")
         return response
 
     # service callbacks
@@ -604,7 +627,7 @@ class NimbroVision(Node):
         try:
             response = self.handle_request('mmgroundingdino', request, response)
         except Exception as e:
-            self.get_logger().error(f"{type(e).__name__}: {repr(e)}\n{traceback.format_exc()}")
+            self._logger.error(f"{type(e).__name__}: {repr(e)}\n{traceback.format_exc()}")
             response.success = False
             response.message = f"Unexpected error: {repr(e)}"
         return response
@@ -613,7 +636,7 @@ class NimbroVision(Node):
         try:
             response = self.handle_request('sam2_realtime_update', request, response)
         except Exception as e:
-            self.get_logger().error(f"{type(e).__name__}: {repr(e)}\n{traceback.format_exc()}")
+            self._logger.error(f"{type(e).__name__}: {repr(e)}\n{traceback.format_exc()}")
             response.success = False
             response.message = f"Unexpected error: {repr(e)}"
         return response
@@ -622,7 +645,7 @@ class NimbroVision(Node):
         try:
             response = self.handle_request('sam2_realtime_track', request, response)
         except Exception as e:
-            self.get_logger().error(f"{type(e).__name__}: {repr(e)}\n{traceback.format_exc()}")
+            self._logger.error(f"{type(e).__name__}: {repr(e)}\n{traceback.format_exc()}")
             response.success = False
             response.message = f"Unexpected error: {repr(e)}"
         return response
@@ -631,7 +654,7 @@ class NimbroVision(Node):
         try:
             response = self.handle_request('dam', request, response)
         except Exception as e:
-            self.get_logger().error(f"{type(e).__name__}: {repr(e)}\n{traceback.format_exc()}")
+            self._logger.error(f"{type(e).__name__}: {repr(e)}\n{traceback.format_exc()}")
             response.success = False
             response.message = f"Unexpected error: {repr(e)}"
         return response
@@ -640,7 +663,7 @@ class NimbroVision(Node):
         try:
             response = self.handle_request('kosmos2', request, response)
         except Exception as e:
-            self.get_logger().error(f"{type(e).__name__}: {repr(e)}\n{traceback.format_exc()}")
+            self._logger.error(f"{type(e).__name__}: {repr(e)}\n{traceback.format_exc()}")
             response.success = False
             response.message = f"Unexpected error: {repr(e)}"
         return response
@@ -649,7 +672,7 @@ class NimbroVision(Node):
         try:
             response = self.handle_request('florence2', request, response)
         except Exception as e:
-            self.get_logger().error(f"{type(e).__name__}: {repr(e)}\n{traceback.format_exc()}")
+            self._logger.error(f"{type(e).__name__}: {repr(e)}\n{traceback.format_exc()}")
             response.success = False
             response.message = f"Unexpected error: {repr(e)}"
         return response

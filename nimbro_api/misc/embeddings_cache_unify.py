@@ -15,11 +15,9 @@ except ImportError:
 ### <Settings>
 
 # index file to read
-index_path = "C:\\Users\\Me\\Desktop\\embeddings\\cache_embeddings_index.json"
 index_path = "./../../cache/embeddings/cache_embeddings_index.json"
 
 # cache file to write
-cache_path = "C:\\Users\\Me\\Desktop\\cache_embeddings.json"
 cache_path = "./../../cache/cache_embeddings.json"
 
 ### </Settings>

@@ -16,6 +16,7 @@ COPY nimbro_api/requirements.txt /colcon_ws/src/nimbro_api/requirements.txt
 RUN pip3 install --break-system-packages -r requirements.txt
 
 # Copy project files and build workspace
+COPY nimbro_utils /colcon_ws/src/nimbro_utils
 COPY nimbro_api /colcon_ws/src/nimbro_api
 COPY nimbro_api_interfaces /colcon_ws/src/nimbro_api_interfaces
 

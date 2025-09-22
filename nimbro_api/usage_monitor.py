@@ -16,18 +16,16 @@ import rclpy
 from rclpy.node import Node
 from ament_index_python.packages import get_package_prefix
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
-from rcl_interfaces.msg import ParameterDescriptor, ParameterType, IntegerRange, FloatingPointRange
+from std_msgs.msg import String
 
-from nimbro_api_interfaces.msg import ApiUsage
-from nimbro_api_interfaces.srv import GetUsage
-from nimbro_api.utils.node import start_and_spin_node
-from nimbro_api.utils.misc import read_json, write_json
-from nimbro_api.utils.parameter_handler import ParameterHandler
+from nimbro_api_interfaces.srv import UsageGet
+
+from nimbro_utils.lazy import start_and_spin_node, ParameterHandler, Logger, read_json, write_json, assert_type_value, assert_keys, log_lines
 
 ### <Parameter Defaults>
 
 node_name = "usage_monitor"
-log_level = 10
+severity = 10
 
 cache_read_once = True
 cache_write_lazy = True
@@ -35,7 +33,7 @@ cache_write_interval = 30.0
 cache_folder = os.path.join(get_package_prefix("nimbro_api").replace("install", "src"), "cache")
 cache_file = "cache_usage.json"
 
-pricing_path = os.path.join(get_package_prefix("nimbro_api").replace("install", "src"), "pricing.json")
+pricing_path = os.path.join(get_package_prefix("nimbro_api").replace("install", "src"), "nimbro_api", "misc", "pricing.json")
 
 ### </Parameter Defaults>
 
@@ -46,213 +44,201 @@ class UsageMonitor(Node):
         self.node_name = self.get_name()
         self.node_namespace = self.get_namespace()
 
+        self._logger = Logger(self)
+
         self.parameter_handler = ParameterHandler(self)
-        self.add_on_set_parameters_callback(self.parameter_handler.parameter_callback)
 
-        descriptor = ParameterDescriptor()
-        descriptor.name = "logger_level"
-        descriptor.type = ParameterType.PARAMETER_INTEGER
-        descriptor.description = "Logger level of this node (DEBUG=10, INFO=20, WARN=30, ERROR=40, FATAL=50)."
-        descriptor.read_only = False
-        int_range = IntegerRange()
-        int_range.from_value = 10
-        int_range.to_value = 50
-        int_range.step = 10
-        descriptor.integer_range.append(int_range)
-        self.parameter_descriptors.append(descriptor)
-        self.declare_parameter(descriptor.name, log_level, descriptor)
+        self.parameter_handler.declare(
+            name="severity",
+            dtype=int,
+            default_value=severity,
+            description="Logging severity of node logger.",
+            read_only=False,
+            range_min=10,
+            range_max=50,
+            range_step=10
+        )
 
-        descriptor = ParameterDescriptor()
-        descriptor.name = "cache_read_once"
-        descriptor.type = ParameterType.PARAMETER_BOOL
-        descriptor.description = "Read usage cache file once when required and keep it in memory instead of loading it every time."
-        descriptor.read_only = False
-        self.parameter_descriptors.append(descriptor)
-        self.declare_parameter(descriptor.name, cache_read_once, descriptor)
+        self.parameter_handler.declare(
+            name="cache_read_once",
+            dtype=bool,
+            default_value=cache_read_once,
+            description="Read usage cache file once when required and keep it in memory instead of loading it every time.",
+            read_only=False
+        )
 
-        descriptor = ParameterDescriptor()
-        descriptor.name = "cache_write_lazy"
-        descriptor.type = ParameterType.PARAMETER_BOOL
-        descriptor.description = "Write usage cache file in fixed intervals instead of writing it with every update."
-        descriptor.read_only = False
-        self.parameter_descriptors.append(descriptor)
-        self.declare_parameter(descriptor.name, cache_write_lazy, descriptor)
+        self.parameter_handler.declare(
+            name="cache_write_lazy",
+            dtype=bool,
+            default_value=cache_write_lazy,
+            description="Write usage cache file in fixed intervals instead of writing it with every update.",
+            read_only=False
+        )
 
-        descriptor = ParameterDescriptor()
-        descriptor.name = "cache_write_interval"
-        descriptor.type = ParameterType.PARAMETER_DOUBLE
-        descriptor.description = "Minimum time in seconds in which the usage cache file is written if cache_write_lazy is active."
-        descriptor.read_only = True
-        float_range = FloatingPointRange()
-        float_range.from_value = 10.0
-        float_range.to_value = 3600.0
-        float_range.step = 0.0
-        descriptor.floating_point_range.append(float_range)
-        self.parameter_descriptors.append(descriptor)
-        self.declare_parameter(descriptor.name, cache_write_interval, descriptor)
+        self.parameter_handler.declare(
+            name="cache_write_interval",
+            dtype=float,
+            default_value=cache_write_interval,
+            description="Minimum time in seconds in which the usage cache file is written if cache_write_lazy is active.",
+            read_only=True,
+            range_min=10.0,
+            range_max=3600.0,
+            range_step=0.0
+        )
 
-        descriptor = ParameterDescriptor()
-        descriptor.name = "cache_folder"
-        descriptor.type = ParameterType.PARAMETER_STRING
-        descriptor.description = "Path to the cache folder. If it does not exist it is automatically created."
-        descriptor.read_only = False
-        self.parameter_descriptors.append(descriptor)
-        self.declare_parameter(descriptor.name, cache_folder, descriptor)
+        self.parameter_handler.declare(
+            name="cache_folder",
+            dtype=str,
+            default_value=cache_folder,
+            description="Path to the cache folder. If it does not exist it is automatically created.",
+            read_only=False
+        )
 
-        descriptor = ParameterDescriptor()
-        descriptor.name = "cache_file"
-        descriptor.type = ParameterType.PARAMETER_STRING
-        descriptor.description = "Name of the cache file inside the cache folder. If it does not exist it is automatically created."
-        descriptor.read_only = False
-        self.parameter_descriptors.append(descriptor)
-        self.declare_parameter(descriptor.name, cache_file, descriptor)
+        self.parameter_handler.declare(
+            name="cache_file",
+            dtype=str,
+            default_value=cache_file,
+            description="Name of the cache file inside the cache folder. If it does not exist it is automatically created.",
+            read_only=False
+        )
 
-        descriptor = ParameterDescriptor()
-        descriptor.name = "pricing_path"
-        descriptor.type = ParameterType.PARAMETER_STRING
-        descriptor.description = "Path to the pricing file that stores the model cost per 1M tokens. Set empty string to disable price calculation."
-        descriptor.read_only = False
-        self.parameter_descriptors.append(descriptor)
-        self.declare_parameter(descriptor.name, pricing_path, descriptor)
-
-        self.parameter_handler.all_declared()
+        self.parameter_handler.declare(
+            name="pricing_path",
+            dtype=str,
+            default_value=pricing_path,
+            description="Path to the pricing file that stores the model cost per 1M tokens. Set empty string to disable price calculation.",
+            read_only=False
+        )
 
         self.file_lock = threading.Lock()
         self.cache_write_required = False
         self.cache = None
 
+        self.warned_model_missing = []
+
         qos_profile = rclpy.qos.QoSProfile(reliability=rclpy.qos.ReliabilityPolicy.RELIABLE, history=rclpy.qos.HistoryPolicy.KEEP_ALL, depth=100)
         self.sub_usage = self.create_subscription(
-            msg_type=ApiUsage,
+            msg_type=String,
             topic=f"{self.node_namespace}/api_usage".replace("//", "/"),
             callback=self.monitor_usage,
             qos_profile=qos_profile,
             callback_group=ReentrantCallbackGroup()
         )
         self.srv_get_usage = self.create_service(
-            srv_type=GetUsage,
+            srv_type=UsageGet,
             srv_name=f"{self.node_namespace}/{self.node_name}/get_usage".replace("//", "/"),
             callback=self.get_usage,
             qos_profile=qos_profile,
             callback_group=MutuallyExclusiveCallbackGroup()
         )
 
-        self.timer_write_lazy = self.create_timer(self.cache_write_interval, self.write_cache_lazy, callback_group=MutuallyExclusiveCallbackGroup())
+        self.timer_write_lazy = self.create_timer(self.parameters.cache_write_interval, self.write_cache_lazy, callback_group=MutuallyExclusiveCallbackGroup())
 
-        self.get_logger().info("Node started")
+        self._logger.info("Node started")
 
     def __del__(self):
         self.write_cache_lazy()
-        self.get_logger().info("Node shutdown")
+        self._logger.info("Node shutdown")
 
-    def parameter_changed(self, parameter):
-        success = True
-        reason = ""
+    def filter_parameter(self, name, value, is_declared):
+        message = None
 
-        if parameter.name == "logger_level":
-            rclpy.logging.set_logger_level(f"{self.node_namespace}/{self.node_name}".replace("//", "/")[1:].replace("/", "."), rclpy.logging.LoggingSeverity(parameter.value))
+        if name == "severity":
+            self._logger.set_settings(settings={'severity': value})
 
-        elif parameter.name == "cache_read_once":
-            self.cache_read_once = parameter.value
+        elif name == "cache_folder":
+            if value == "":
+                value = os.path.join(get_package_prefix("nimbro_api").replace("install", "src"), "cache")
 
-        elif parameter.name == "cache_write_lazy":
-            self.cache_write_lazy = parameter.value
-
-        elif parameter.name == "cache_write_interval":
-            self.cache_write_interval = parameter.value
-
-        elif parameter.name == "cache_folder":
-            if parameter.value == "":
-                self.cache_folder = os.path.join(get_package_prefix("nimbro_api").replace("install", "src"), "cache")
-                self._node.get_logger().info(f"Interpreting empty parameter 'cache_folder' as '{self.cache_folder}'")
-            else:
-                self.cache_folder = parameter.value
-
-        elif parameter.name == "cache_file":
-            self.cache_file = parameter.value
-
-        elif parameter.name == "pricing_path":
-            # TODO structure this by API type and endpoint and retrieve costs for OpenRouter endpoint from their Models API instead
-            if parameter.value == "":
+        elif name == "pricing_path":
+            # TODO structure this by API type and endpoint and retrieve costs for OpenRouter endpoint from their Models API
+            if value == "":
                 self.pricing = {}
             else:
-                success, reason, pricing = read_json(file_path=parameter.value, logger=self.get_logger())
+                success, _message, pricing = read_json(file_path=value, logger=self._logger)
                 if success:
                     if not isinstance(pricing, dict):
-                        success = False
-                        reason = f"Expected content of pricing file to be of type 'dict' instead of '{type(pricing).__name__}'."
+                        message = f"Expected content of pricing file to be of type 'dict' instead of '{type(pricing).__name__}'."
+                        value = None
                     else:
                         self.pricing = pricing
-                        self.get_logger().debug(f"Using pricing:\n{json.dumps(self.pricing, indent=4)}")
-        else:
-            return None, None
+                        self._logger.debug(f"Using pricing:\n{json.dumps(self.pricing, indent=4)}")
 
-        return success, reason
+        return value, message
 
     def monitor_usage(self, msg):
-        stamp = datetime.datetime.now().isoformat()
+        # log_lines(f"Received usage:\n{msg.data}", line_length=150, line_highlight="|", block_format=False, logger=self._logger, severity=10)
 
-        self.get_logger().info(f"Registered '{msg.api_type}' usage - "
-                               f"api_type: '{msg.api_type}', "
-                               f"api_endpoint: '{msg.api_endpoint}', "
-                               f"model_name: '{msg.model_name}', "
-                               f"identifier: '{msg.identifier}', "
-                               f"tokens_input_uncached: {msg.tokens_input_uncached}, "
-                               f"tokens_input_cached: {msg.tokens_input_cached}, "
-                               f"tokens_output: {msg.tokens_output}")
-
-        api_types = ["completions", "embeddings"]
-        if msg.api_type not in api_types:
-            message = f"Ignoring usage-message of unsupported type '{msg.api_type}'. Supported usage types are {api_types}"
-            self.get_logger().error(message)
+        try:
+            usage = json.loads(msg.data)
+        except Exception as e:
+            message = f"Ignoring usage-message after failure to parse it as JSON: {e}"
+            self._logger.error(message)
             return
 
-        if msg.api_endpoint == "":
-            message = "Ignoring usage-message with empty field 'api_endpoint'"
-            self.get_logger().error(message)
+        required_keys = ['api_type', 'api_endpoint', 'model_name', 'stamp_start', 'stamp_stop', 'duration']
+        optional_keys = ['identifier', 'tokens_input_uncached', 'tokens_input_cached', 'tokens_output']
+
+        try:
+            usage = json.loads(msg.data)
+            assert_type_value(usage, dict, name="usage message", logger=self._logger)
+            assert_keys(obj=usage, keys=required_keys, mode="required", name="usage message", logger=self._logger)
+            assert_keys(obj=usage, keys=required_keys + optional_keys, mode="whitelist", name="usage message", logger=self._logger)
+
+            assert_type_value(usage['api_type'], ["completions", "embeddings"], name="field 'api_type' of usage message", logger=self._logger)
+
+            assert_type_value(usage['api_endpoint'], str, name="field 'api_endpoint' of usage message", logger=self._logger)
+            assert usage['api_endpoint'] != "", "Expected value of field 'api_endpoint' of usage message to not be an empty string."
+
+            assert_type_value(usage['model_name'], str, name="field 'model_name' of usage message", logger=self._logger)
+            assert usage['model_name'] != "", "Expected value of field 'model_name' of usage message to not be an empty string."
+
+            assert_type_value(usage['stamp_start'], str, name="field 'stamp_start' of usage message", logger=self._logger)
+            assert usage['stamp_start'] != "", "Expected value of field 'stamp_start' of usage message to not be an empty string." #
+
+            assert_type_value(usage['model_name'], str, name="field 'model_name' of usage message", logger=self._logger)
+            assert usage['model_name'] != "", "Expected value of field 'model_name' of usage message to not be an empty string."
+
+            datetime.datetime.fromisoformat(usage['stamp_start'])
+            datetime.datetime.fromisoformat(usage['stamp_stop'])
+
+            assert_type_value(usage['duration'], [int, float], name="field 'duration' of usage message", logger=self._logger)
+
+            if 'identifier' in usage:
+                assert_type_value(usage['identifier'], str, name="optional field 'identifier' of usage message", logger=self._logger)
+                assert usage['identifier'] != "", "Expected value of optional field 'identifier' of usage message to not be an empty string."
+
+            if 'input_tokens_uncached' in usage:
+                assert_type_value(usage['input_tokens_uncached'], int, name="optional field 'input_tokens_uncached' of usage message", logger=self._logger)
+                assert usage['input_tokens_uncached'] > 0, "Expected value of optional field 'input_tokens_uncached' of usage message to be greater zero."
+
+            if 'input_tokens_cached' in usage:
+                assert_type_value(usage['input_tokens_cached'], int, name="optional field 'input_tokens_cached' of usage message", logger=self._logger)
+                assert usage['input_tokens_cached'] > 0, "Expected value of optional field 'input_tokens_cached' of usage message to be greater zero."
+
+            if 'tokens_output' in usage:
+                assert_type_value(usage['tokens_output'], int, name="optional field 'tokens_output' of usage message", logger=self._logger)
+                assert usage['tokens_output'] > 0, "Expected value of optional field 'tokens_output' of usage message to be greater zero."
+
+        except Exception:
+            self._logger.warn("Ignoring usage-message after failure to parse it")
             return
 
-        if msg.model_name == "":
-            message = "Ignoring usage-message with empty field 'model_name'"
-            self.get_logger().error(message)
-            return
-
-        if msg.tokens_input_uncached + msg.tokens_input_uncached + msg.tokens_input_uncached == 0:
-            message = "Ignoring usage-message with zero token usage"
-            self.get_logger().error(message)
-            return
+        log_lines(f"Registered usage:\n{msg.data}", line_length=150, line_highlight="|", block_format=False, logger=self._logger, severity=10)
 
         self.file_lock.acquire()
 
         success, _, cache = self.read_usage()
-
         if not success:
             self.file_lock.release()
-            self.get_logger().error("Ignoring registered usage after failure to read usage from cache")
+            self._logger.error("Ignoring usage-message after failure to read usage from cache")
             return
 
-        if msg.api_type not in cache:
-            cache[msg.api_type] = []
-
-        cache_item = {
-            'stamp': stamp,
-            'api_endpoint': msg.api_endpoint,
-            'model_name': msg.model_name,
-        }
-
-        if msg.identifier != "":
-            cache_item['identifier'] = msg.identifier
-        if msg.tokens_input_uncached > 0:
-            cache_item['tokens_input_uncached'] = msg.tokens_input_uncached
-        if msg.tokens_input_cached > 0:
-            cache_item['tokens_input_cached'] = msg.tokens_input_cached
-        if msg.tokens_output > 0:
-            cache_item['tokens_output'] = msg.tokens_output
-
-        cache[msg.api_type].append(cache_item)
+        if usage['api_type'] not in cache:
+            cache[usage['api_type']] = []
+        cache[usage['api_type']].append(usage)
 
         self.cache_write_required = True
-
         self.write_usage(cache)
 
         self.file_lock.release()
@@ -295,7 +281,7 @@ class UsageMonitor(Node):
                     message = f"Failed to read field 'stamp_end': {repr(e)}"
 
         if not success:
-            self.get_logger().error(message)
+            self._logger.error(message)
             response.success = False
             response.message = message
             return response
@@ -346,13 +332,16 @@ class UsageMonitor(Node):
                             if item.get('identifier') != filter_identifier:
                                 continue
                         if filter_stamp_start is not None or filter_stamp_end is not None:
-                            stamp = datetime.datetime.fromisoformat(item['stamp'])
-                        if filter_stamp_start is not None:
-                            if stamp < filter_stamp_start:
-                                continue
-                        if filter_stamp_end is not None:
-                            if stamp > filter_stamp_end:
-                                continue
+                            if 'stamp_stop' in item:
+                                stamp = datetime.datetime.fromisoformat(item['stamp_stop'])
+                            else:
+                                stamp = datetime.datetime.fromisoformat(item['stamp']) # for compatibility with old cache
+                            if filter_stamp_start is not None:
+                                if stamp < filter_stamp_start:
+                                    continue
+                            if filter_stamp_end is not None:
+                                if stamp > filter_stamp_end:
+                                    continue
 
                         # dollars per item
                         if item.get('model_name') in self.pricing:
@@ -408,13 +397,13 @@ class UsageMonitor(Node):
 
                                 if tokens_input_uncached > 0:
                                     if 'tokens_input_uncached' not in self.pricing[model_name]:
-                                        self.get_logger().warn(f"Cannot consider price of '{tokens_input_uncached}' uncached prompt tokens for model '{model_name}'")
+                                        self._logger.warn(f"Cannot consider price of '{tokens_input_uncached}' uncached prompt tokens for model '{model_name}'")
                                 if tokens_input_cached > 0:
                                     if 'tokens_input_cached' not in self.pricing[model_name]:
-                                        self.get_logger().warn(f"Cannot consider price of '{tokens_input_cached}' cached prompt tokens for model '{model_name}'")
+                                        self._logger.warn(f"Cannot consider price of '{tokens_input_cached}' cached prompt tokens for model '{model_name}'")
                                 if tokens_output > 0:
                                     if 'tokens_output' not in self.pricing[model_name]:
-                                        self.get_logger().warn(f"Cannot consider price of '{tokens_output}' completion tokens for model '{model_name}'")
+                                        self._logger.warn(f"Cannot consider price of '{tokens_output}' completion tokens for model '{model_name}'")
 
                                 tokens_input_uncached_price = (tokens_input_uncached / 1000000) * self.pricing[model_name].get('tokens_input_uncached', 0.0)
                                 tokens_input_cached_price = (tokens_input_cached / 1000000) * self.pricing[model_name].get('tokens_input_cached', 0.0)
@@ -432,8 +421,9 @@ class UsageMonitor(Node):
                                 if dollars_input > 0 and tokens_output_price > 0:
                                     usage[api_type]['total'][api_endpoint][model_name]['dollars_total'] = dollars_input + tokens_output_price
 
-                            else:
-                                self.get_logger().warn(f"Cannot estimate price for model '{model_name}'")
+                            elif model_name not in self.warned_model_missing:
+                                self._logger.warn(f"Cannot estimate price for model '{model_name}'")
+                                self.warned_model_missing.append(model_name)
 
                 if total_dollars_input > 0:
                     usage[api_type]['dollars_input'] = total_dollars_input
@@ -464,48 +454,48 @@ class UsageMonitor(Node):
         if ORJSON_AVAILABLE:
             response.usage = orjson.dumps(usage, option=orjson.OPT_INDENT_2).decode("utf-8")
         else:
-            self.get_logger().warn("Using slow 'json' module to format usage. Install 'orjson' to speed this up!", once=True)
+            self._logger.warn("Using slow 'json' module to format usage. Install 'orjson' to speed this up!", once=True)
             response.usage = json.dumps(usage, indent=2)
-        # self.get_logger().debug(f"Usage:\n{response.usage}")
+        # self._logger.debug(f"Usage:\n{response.usage}")
 
         if request.api_type == "":
-            response.message = f"Successfully retrieved usage in '{time.perf_counter() - tic:.3f}s'."
+            response.message = f"Retrieved usage in '{time.perf_counter() - tic:.3f}s'."
         else:
-            response.message = f"Successfully retrieved '{request.api_type}' usage in '{time.perf_counter() - tic:.3f}s'."
-        self.get_logger().debug(response.message)
+            response.message = f"Retrieved '{request.api_type}' usage in '{time.perf_counter() - tic:.3f}s'."
+        self._logger.debug(response.message)
 
         return response
 
     def read_usage(self):
-        if self.cache_read_once is True and self.cache is not None:
+        if self.parameters.cache_read_once is True and self.cache is not None:
             return True, None, self.cache
 
-        cache_path = os.path.join(self.cache_folder, self.cache_file)
+        cache_path = os.path.join(self.parameters.cache_folder, self.parameters.cache_file)
 
         try:
-            if not os.path.exists(self.cache_folder):
-                os.makedirs(self.cache_folder)
-                self.get_logger().debug(f"Created cache folder '{self.cache_folder}'")
+            if not os.path.exists(self.parameters.cache_folder):
+                os.makedirs(self.parameters.cache_folder)
+                self._logger.debug(f"Created cache folder '{self.parameters.cache_folder}'")
             if not os.path.exists(cache_path):
                 with open(cache_path, 'w') as f:
                     json.dump({}, f, indent=2)
-                self.get_logger().info(f"Initialized usage cache file '{cache_path}'")
+                self._logger.info(f"Initialized usage cache file '{cache_path}'")
         except Exception as e:
             success = False
             message = f"Usage cache file does not exist but initializing it under '{cache_path}' failed: {repr(e)}"
-            self.get_logger().error(message)
+            self._logger.error(message)
         else:
-            success, message, cache = read_json(file_path=cache_path, logger=self.get_logger())
+            success, message, cache = read_json(file_path=cache_path, logger=self._logger)
             if success:
                 if not isinstance(cache, dict):
                     success = False
                     message = f"Expected content of usage cache file to be of type 'dict', but it is of type '{type(cache).__name__}'."
-                    self.get_logger().error(message)
+                    self._logger.error(message)
 
         if not success:
             cache = {}
 
-        if self.cache_read_once:
+        if self.parameters.cache_read_once:
             self.cache = cache
 
         return success, message, cache
@@ -516,16 +506,16 @@ class UsageMonitor(Node):
 
         self.cache = cache
 
-        if self.cache_write_lazy and not force:
+        if self.parameters.cache_write_lazy and not force:
             return
 
-        cache_path = os.path.join(self.cache_folder, self.cache_file)
-        success, _ = write_json(file_path=cache_path, json_object=cache, indent=True, logger=self.get_logger())
+        cache_path = os.path.join(self.parameters.cache_folder, self.parameters.cache_file)
+        success, _ = write_json(file_path=cache_path, json_object=cache, indent=True, logger=self._logger)
         if success:
             self.cache_write_required = False
 
     def write_cache_lazy(self):
-        if self.cache_write_lazy:
+        if self.parameters.cache_write_lazy:
             self.file_lock.acquire()
             self.write_usage(self.cache, force=True)
             self.file_lock.release()

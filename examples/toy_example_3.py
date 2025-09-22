@@ -188,41 +188,39 @@ class ToyExample(Node):
 
         while True:
             try:
-                text_response # noqa
+                completion # noqa
             except UnboundLocalError:
                 self.update_tools(include_non_valid_functions=True)
 
-                text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=model_system_prompt, role="system", reset_context=True, response_type="none", retry=True)[2:]
-                text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text="Task: " + self.task, role="user", reset_context=False, response_type="none", retry=True)[2:]
-                text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text="Here is additional information useful for solving the task:", role="user", reset_context=False, response_type="none", retry=True)[2:]
-                text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text="Known locations: " + str(self.locations), role="user", reset_context=False, response_type="none", retry=True)[2:]
-                text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text="The robots current location is '" + str(self.locations[self.current_location]) + "'.", role="user", reset_context=False, response_type="none", retry=True)[2:]
-                text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text="Known persons and their locations: " + str(person_info), role="user", reset_context=False, response_type="none", retry=True)[2:]
+                completion = self.api_director.prompt(completions_id=self.completions_id, text=model_system_prompt, role="system", reset_context=True, response_type="none", retry=True)[2]
+                completion = self.api_director.prompt(completions_id=self.completions_id, text="Task: " + self.task, role="user", reset_context=False, response_type="none", retry=True)[2]
+                completion = self.api_director.prompt(completions_id=self.completions_id, text="Here is additional information useful for solving the task:", role="user", reset_context=False, response_type="none", retry=True)[2]
+                completion = self.api_director.prompt(completions_id=self.completions_id, text="Known locations: " + str(self.locations), role="user", reset_context=False, response_type="none", retry=True)[2]
+                completion = self.api_director.prompt(completions_id=self.completions_id, text="The robots current location is '" + str(self.locations[self.current_location]) + "'.", role="user", reset_context=False, response_type="none", retry=True)[2]
+                completion = self.api_director.prompt(completions_id=self.completions_id, text="Known persons and their locations: " + str(person_info), role="user", reset_context=False, response_type="none", retry=True)[2]
                 if not (chain_of_thought or in_between_reasoning):
                     self.update_tools()
-                text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text="Known objects and their locations: " + str(object_info), role="user", reset_context=False, response_type="none" if chain_of_thought or in_between_reasoning else "always", retry=True)[2:]
+                completion = self.api_director.prompt(completions_id=self.completions_id, text="Known objects and their locations: " + str(object_info), role="user", reset_context=False, response_type="none" if chain_of_thought or in_between_reasoning else "always", retry=True)[2]
                 if chain_of_thought:
-                    text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=chain_of_thought_texts[0], role="user", reset_context=False, response_type="text", retry=True)[2:]
+                    completion = self.api_director.prompt(completions_id=self.completions_id, text=chain_of_thought_texts[0], role="user", reset_context=False, response_type="text", retry=True)[2]
                     if in_between_reasoning:
-                        text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[0], role="user", reset_context=False, response_type="text", retry=True)[2:]
+                        completion = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[0], role="user", reset_context=False, response_type="text", retry=True)[2]
                         self.update_tools()
-                        text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[1], role="user", reset_context=False, response_type="always", retry=True)[2:]
+                        completion = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[1], role="user", reset_context=False, response_type="always", retry=True)[2]
                     else:
-                        text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=chain_of_thought_texts[1], role="user", reset_context=False, response_type="always", retry=True)[2:]
+                        completion = self.api_director.prompt(completions_id=self.completions_id, text=chain_of_thought_texts[1], role="user", reset_context=False, response_type="always", retry=True)[2]
                 elif in_between_reasoning:
-                    text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[0], role="user", reset_context=False, response_type="text", retry=True)[2:]
+                    completion = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[0], role="user", reset_context=False, response_type="text", retry=True)[2]
                     self.update_tools()
-                    text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[1], role="user", reset_context=False, response_type="always", retry=True)[2:]
+                    completion = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[1], role="user", reset_context=False, response_type="always", retry=True)[2]
             finally:
-                if len(tool_calls) == 1:
-                    tool = tool_calls[0]
+                num_tool_calls = len(completion.get('tools', []))
+                if num_tool_calls:
+                    tool = completion['tools'][0]
                 else:
-                    log = "Model responded with '" + str(len(tool_calls)) + "' tool calls"
+                    log = f"Model responded with '{num_tool_calls}' tool calls"
                     self.get_logger().error(log)
-                    if text_response == "":
-                        stop_reason = log
-                    else:
-                        stop_reason = text_response
+                    stop_reason = completion.get('text', log)
                     break
             iterations += 1
 
@@ -231,17 +229,17 @@ class ToyExample(Node):
                     self.current_location = self.locations.index(tool["arguments"]["location"])
                     self.get_logger().info("Current location set to '" + self.locations[self.current_location] + "'")
                     self.update_tools()
-                    text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text="The robot successfully moved to the location '" + self.locations[self.current_location] + "'.", role="tool", reset_context=False, tool_response_id=tool["id"], response_type="none" if in_between_reasoning else "always", retry=True)[2:]
+                    completion = self.api_director.prompt(completions_id=self.completions_id, text="The robot successfully moved to the location '" + self.locations[self.current_location] + "'.", role="tool", reset_context=False, tool_response_id=tool["id"], response_type="none" if in_between_reasoning else "always", retry=True)[2]
                 elif tool["arguments"]["location"] in [k for k, v in self.person_locations.items() if v == self.current_location]:
                     self.current_location = self.locations[self.person_locations[tool["arguments"]["location"]]]
                     self.get_logger().info("Current location set to '" + self.locations[self.current_location] + "' (person '" + tool["arguments"]["location"] + "')")
                     self.update_tools()
-                    text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text="The robot successfully moved to the person '" + tool["arguments"]["location"] + "' at the location '", role="tool", reset_context=False, tool_response_id=tool["id"], response_type="none" if in_between_reasoning else "always", retry=True)[2:]
+                    completion = self.api_director.prompt(completions_id=self.completions_id, text="The robot successfully moved to the person '" + tool["arguments"]["location"] + "' at the location '", role="tool", reset_context=False, tool_response_id=tool["id"], response_type="none" if in_between_reasoning else "always", retry=True)[2]
                 elif tool["arguments"]["location"] in [k for k, v in self.object_locations.items() if v == self.current_location]:
                     self.current_location = self.locations[self.object_locations[tool["arguments"]["location"]]]
                     self.get_logger().info("Current location set to '" + self.locations[self.current_location] + "' (object '" + tool["arguments"]["location"] + "')")
                     self.update_tools()
-                    text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text="The robot successfully moved to the object '" + tool["arguments"]["location"] + "' at the location '" + self.locations[self.current_location] + "'.", role="tool", reset_context=False, tool_response_id=tool["id"], response_type="none" if in_between_reasoning else "always", retry=True)[2:]
+                    completion = self.api_director.prompt(completions_id=self.completions_id, text="The robot successfully moved to the object '" + tool["arguments"]["location"] + "' at the location '" + self.locations[self.current_location] + "'.", role="tool", reset_context=False, tool_response_id=tool["id"], response_type="none" if in_between_reasoning else "always", retry=True)[2]
                 else:
                     stop_reason = "Location '" + tool["arguments"]["location"]["name"] + "' is not a valid target"
                     break
@@ -249,7 +247,7 @@ class ToyExample(Node):
             elif tool["name"] == "grasp_object":
                 if len([k for k, v in self.object_locations.items() if v == len(self.locations)]) >= self.max_num_simultanious_grasps:
                     self.get_logger().warn("Cannot grasp object '" + tool["arguments"]["object"] + "' because the robot is already holding " + str(self.max_num_simultanious_grasps) + " objects.")
-                    text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text="The robot cannot grasp an additional object because it is already holding " + str(self.max_num_simultanious_grasps) + " objects. Place at least one of them, before grasping th next one.", role="tool", reset_context=False, tool_response_id=tool["id"], response_type="none" if in_between_reasoning else "always", retry=True)[2:]
+                    completion = self.api_director.prompt(completions_id=self.completions_id, text="The robot cannot grasp an additional object because it is already holding " + str(self.max_num_simultanious_grasps) + " objects. Place at least one of them, before grasping th next one.", role="tool", reset_context=False, tool_response_id=tool["id"], response_type="none" if in_between_reasoning else "always", retry=True)[2]
                 else:
                     # if not tool["arguments"]["object"] in self.objects:
                     #   stop_reason = "Object '" + tool["arguments"]["object"] + "' is not a valid object"
@@ -270,10 +268,10 @@ class ToyExample(Node):
                         self.object_locations[tool["arguments"]["object"]] = len(self.locations)
                         self.get_logger().info("Grasped object '" + tool["arguments"]["object"] + "'")
                         self.update_tools()
-                        text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=(("The robot successfully moved to the location '" + self.locations[self.current_location] + "' and") if moved else "The robot successfully") + " grasped the object '" + tool["arguments"]["object"] + "' from there.", role="tool", reset_context=False, tool_response_id=tool["id"], response_type="none" if in_between_reasoning else "always", retry=True)[2:]
+                        completion = self.api_director.prompt(completions_id=self.completions_id, text=(("The robot successfully moved to the location '" + self.locations[self.current_location] + "' and") if moved else "The robot successfully") + " grasped the object '" + tool["arguments"]["object"] + "' from there.", role="tool", reset_context=False, tool_response_id=tool["id"], response_type="none" if in_between_reasoning else "always", retry=True)[2]
                     else:
                         self.update_tools()
-                        text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text="The robot moved to the location '" + self.locations[self.current_location] + "' but could not find the object '" + tool["arguments"]["object"] + "' there.", role="tool", reset_context=False, tool_response_id=tool["id"], response_type="none" if in_between_reasoning else "always", retry=True)[2:]
+                        completion = self.api_director.prompt(completions_id=self.completions_id, text="The robot moved to the location '" + self.locations[self.current_location] + "' but could not find the object '" + tool["arguments"]["object"] + "' there.", role="tool", reset_context=False, tool_response_id=tool["id"], response_type="none" if in_between_reasoning else "always", retry=True)[2]
 
             elif tool["name"] == "place_object":
                 # if not tool["arguments"]["object"] in self.objects:
@@ -297,7 +295,7 @@ class ToyExample(Node):
                 self.object_locations[tool["arguments"]["object"]] = self.current_location
                 self.get_logger().info("Placed object '" + tool["arguments"]["object"] + "'")
                 self.update_tools()
-                text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=(("The robot successfully moved to the location '" + self.locations[self.current_location] + "' and") if moved else "The robot successfully") + " placed the object '" + tool["arguments"]["object"] + "' " + ("there." if moved else "at the location '" + self.locations[self.current_location] + "'."), role="tool", reset_context=False, tool_response_id=tool["id"], response_type="none" if in_between_reasoning else "always", retry=True)[2:]
+                completion = self.api_director.prompt(completions_id=self.completions_id, text=(("The robot successfully moved to the location '" + self.locations[self.current_location] + "' and") if moved else "The robot successfully") + " placed the object '" + tool["arguments"]["object"] + "' " + ("there." if moved else "at the location '" + self.locations[self.current_location] + "'."), role="tool", reset_context=False, tool_response_id=tool["id"], response_type="none" if in_between_reasoning else "always", retry=True)[2]
 
             elif tool["name"] == "speak":
                 if not tool["arguments"]["person"] in self.persons:
@@ -314,9 +312,9 @@ class ToyExample(Node):
 
                 self.get_logger().info("Speaking to '" + tool["arguments"]["person"] + "': '" + tool["arguments"]["text"] + "'")
                 if tool["arguments"]["requires_answer"]:
-                    text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=(("The robot successfully moved to the location '" + self.locations[self.current_location] + "' and") if moved else "The robot successfully") + " said '" + tool["arguments"]["text"] + "' to '" + tool["arguments"]["person"] + "', who replied: 'I want a " + self.person_drinks[tool["arguments"]["person"]] + ".'", role="tool", reset_context=False, tool_response_id=tool["id"], response_type="none" if in_between_reasoning else "always", retry=True)[2:]
+                    completion = self.api_director.prompt(completions_id=self.completions_id, text=(("The robot successfully moved to the location '" + self.locations[self.current_location] + "' and") if moved else "The robot successfully") + " said '" + tool["arguments"]["text"] + "' to '" + tool["arguments"]["person"] + "', who replied: 'I want a " + self.person_drinks[tool["arguments"]["person"]] + ".'", role="tool", reset_context=False, tool_response_id=tool["id"], response_type="none" if in_between_reasoning else "always", retry=True)[2]
                 else:
-                    text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=(("The robot successfully moved to the location '" + self.locations[self.current_location] + "' and") if moved else "The robot successfully") + " said '" + tool["arguments"]["text"] + "' to '" + tool["arguments"]["person"] + "'.", role="tool", reset_context=False, tool_response_id=tool["id"], response_type="none" if in_between_reasoning else "always", retry=True)[2:]
+                    completion = self.api_director.prompt(completions_id=self.completions_id, text=(("The robot successfully moved to the location '" + self.locations[self.current_location] + "' and") if moved else "The robot successfully") + " said '" + tool["arguments"]["text"] + "' to '" + tool["arguments"]["person"] + "'.", role="tool", reset_context=False, tool_response_id=tool["id"], response_type="none" if in_between_reasoning else "always", retry=True)[2]
 
             elif tool["name"] == "task_is_accomplished":
                 stop_reason = "Model called task_is_accomplished()" # TODO introduce stop conditions (e.g. hands must be empty)
@@ -327,8 +325,8 @@ class ToyExample(Node):
                 break
 
             if in_between_reasoning:
-                text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[0], role="user", reset_context=False, response_type="text", retry=True)[2:]
-                text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[1], role="user", reset_context=False, response_type="always", retry=True)[2:]
+                completion = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[0], role="user", reset_context=False, response_type="text", retry=True)[2]
+                completion = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[1], role="user", reset_context=False, response_type="always", retry=True)[2]
 
         ### evaluate
 

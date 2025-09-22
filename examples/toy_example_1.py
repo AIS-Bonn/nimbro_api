@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import time
-import copy
+# noqa
 import traceback
 
 import rclpy
@@ -15,7 +15,7 @@ from nimbro_api.utils.node import start_and_spin_node
 
 ### <Parameter Defaults>
 
-node_name = "toy_example_2"
+node_name = "toy_example_1"
 logger_level = 10
 
 ## non-params
@@ -138,41 +138,38 @@ class ToyExample(Node):
 
         ### scenario
 
-        self.locations = ["shelve", "table", "operator", "sink"]
+        self.locations = ["living room", "kitchen", "bedroom", "hallway"]
 
-        self.current_location = 2
-        self.objects = ["apple", "banana", "orange", "bread", "cereals", "pringles", "chocolate",
-                        "coke", "orange juice", "olive oil", "red wine", "rum", "milk", "water",
-                        "notebook", "rubiks cube", "lighter", "candle", "cigar", "ash tray", "pen",
-                        "bowl", "plate", "fork", "knife", "spoon", "cup", "glass",
-                        "sponge", "cloth", "brush", "dish soap", "cleaner spray", "paper roll", "kitchen towel"]
-        self.object_locations = {"apple": 0, "banana": 0, "orange": 0, "bread": 0, "cereals": 0, "pringles": 0, "chocolate": 0,
-                                 "coke": 0, "orange juice": 0, "olive oil": 0, "red wine": 0, "rum": 0, "milk": 0, "water": 0,
-                                 "notebook": 0, "rubiks cube": 0, "lighter": 0, "candle": 0, "cigar": 0, "ash tray": 0, "pen": 0,
-                                 "bowl": 0, "plate": 0, "fork": 0, "knife": 0, "spoon": 0, "cup": 0, "glass": 0,
-                                 "sponge": 0, "cloth": 0, "brush": 0, "dish soap": 0, "cleaner spray": 0, "paper roll": 0, "kitchen towel": 0}
-
-        # self.task = "Put the apple on the table."
+        # self.current_location = 0
+        # light_status = [True,False,False,True]
+        # self.task = "Turn off the light in the hallway."
         # def goal_reached():
-        #   return self.object_locations["apple"] == 1
+        #   return light_status[3] == False
 
-        # self.task = "Put everything I need to eat cereals on the table."
-        self.task = "I want to east granola. Set the table."
+        # self.current_location = 0
+        # light_status = [True,False,True,False]
+        # self.task = "Turn on the light in the bedroom and in the hallway."
+        # def goal_reached():
+        #   return light_status[2] == True and light_status[3] == True
+
+        self.current_location = 0
+        light_status = [True, False, True, False]
+        self.task = "Turn on the light in the bedroom and in the hallway, then come back to the living room."
 
         def goal_reached():
-            return self.object_locations["cereals"] == 1 and self.object_locations["milk"] == 1 and self.object_locations["bowl"] == 1 and self.object_locations["spoon"] == 1
+            return light_status[2] is True and light_status[3] is True and self.current_location == 0
 
-        # self.task = "Give me a cigar and fire and put the ash tray on the table."
+        # self.current_location = 0
+        # light_status = [False,True,True,True]
+        # self.task = "Turn off all lights and come back to the current location."
         # def goal_reached():
-        #   return self.object_locations["cigar"] == 2 and self.object_locations["lighter"] == 2 and self.object_locations["ash tray"] == 1
+        #   return light_status[0] == False and light_status[1] == False and light_status[2] == False and light_status[3] == False and self.current_location == 0
 
-        # self.object_locations["cereals"] = 1
-        # self.object_locations["milk"] = 1
-        # self.object_locations["bowl"] = 1
-        # self.object_locations["spoon"] = 1
-        # self.task = "Put the dirty dishes into the sink and the ingredients back into the shelve."
+        # self.current_location = 3
+        # light_status = [True,True,True,True]
+        # self.task = "Make shure the light is turned on in every location that contains the letter 'a' and turned off in the remaining locations. Once you are done, come back to the current location."
         # def goal_reached():
-        #   return self.object_locations["cereals"] == 0 and self.object_locations["milk"] == 0 and self.object_locations["bowl"] == 3 and self.object_locations["spoon"] == 3
+        #   return light_status[0] == False and light_status[1] == False  and light_status[2] == False and light_status[3] == True and self.current_location == 3
 
         ### run
 
@@ -181,7 +178,7 @@ class ToyExample(Node):
             self.get_logger().info("Scenario:")
             self.get_logger().info("Locations: " + str(self.locations))
             self.get_logger().info("Current location: " + self.locations[self.current_location])
-            self.get_logger().info("Objects & locations: " + str(self.object_locations))
+            self.get_logger().info("Lights: " + str(light_status))
             self.get_logger().info("Task: '" + self.task + "'")
 
         print()
@@ -191,39 +188,32 @@ class ToyExample(Node):
         stop_reason = ""
         tic = time.perf_counter()
 
-        info = copy.deepcopy(self.object_locations)
-        for k in self.object_locations.keys():
-            info[k] = self.locations[self.object_locations[k]]
-
         while True:
             try:
-                text_response # noqa
+                completion # noqa
             except UnboundLocalError:
                 self.update_tools()
 
-                text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=model_system_prompt, role="system", reset_context=True, response_type="none", retry=True)[2:]
-                text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text="Task: " + self.task, role="user", reset_context=False, response_type="none", retry=True)[2:]
-                text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text="Here is additional information regarding object locations:\n" + str(info), role="user", reset_context=False, response_type="none" if chain_of_thought or in_between_reasoning else "always", retry=True)[2:]
+                completion = self.api_director.prompt(completions_id=self.completions_id, text=model_system_prompt, role="system", reset_context=True, response_type="none", retry=True)[2]
+                completion = self.api_director.prompt(completions_id=self.completions_id, text="Task: " + self.task, role="user", reset_context=False, response_type="none" if chain_of_thought or in_between_reasoning else "always", retry=True)[2]
                 if chain_of_thought:
-                    text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=chain_of_thought_texts[0], role="user", reset_context=False, response_type="text", retry=True)[2:]
+                    completion = self.api_director.prompt(completions_id=self.completions_id, text=chain_of_thought_texts[0], role="user", reset_context=False, response_type="text", retry=True)[2]
                     if in_between_reasoning:
-                        text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[0], role="user", reset_context=False, response_type="text", retry=True)[2:]
-                        text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[1], role="user", reset_context=False, response_type="always", retry=True)[2:]
+                        completion = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[0], role="user", reset_context=False, response_type="text", retry=True)[2]
+                        completion = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[1], role="user", reset_context=False, response_type="always", retry=True)[2]
                     else:
-                        text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=chain_of_thought_texts[1], role="user", reset_context=False, response_type="always", retry=True)[2:]
+                        completion = self.api_director.prompt(completions_id=self.completions_id, text=chain_of_thought_texts[1], role="user", reset_context=False, response_type="always", retry=True)[2]
                 elif in_between_reasoning:
-                    text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[0], role="user", reset_context=False, response_type="text", retry=True)[2:]
-                    text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[1], role="user", reset_context=False, response_type="always", retry=True)[2:]
+                    completion = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[0], role="user", reset_context=False, response_type="text", retry=True)[2]
+                    completion = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[1], role="user", reset_context=False, response_type="always", retry=True)[2]
             finally:
-                if len(tool_calls) == 1:
-                    tool = tool_calls[0]
+                num_tool_calls = len(completion.get('tools', []))
+                if num_tool_calls:
+                    tool = completion['tools'][0]
                 else:
-                    log = "Model responded with '" + str(len(tool_calls)) + "' tool calls"
+                    log = f"Model responded with '{num_tool_calls}' tool calls"
                     self.get_logger().error(log)
-                    if text_response == "":
-                        stop_reason = log
-                    else:
-                        stop_reason = text_response
+                    stop_reason = completion.get('text', log)
                     break
             iterations += 1
 
@@ -232,39 +222,18 @@ class ToyExample(Node):
                     self.current_location = self.locations.index(tool["arguments"]["location"])
                     self.get_logger().info("Current location set to '" + self.locations[self.current_location] + "'")
                     self.update_tools()
-                    text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text="The robot successfully moved to the location '" + self.locations[self.current_location] + "'.", role="tool", reset_context=False, tool_response_id=tool["id"], response_type="none" if in_between_reasoning else "always", retry=True)[2:]
+                    completion = self.api_director.prompt(completions_id=self.completions_id, text="The robot successfully moved to the location '" + self.locations[self.current_location] + "'.", role="tool", reset_context=False, tool_response_id=tool["id"], response_type="none" if in_between_reasoning else "always", retry=True)[2]
                 else:
                     stop_reason = "Location '" + tool["arguments"]["location"]["name"] + "' is not a valid target"
                     break
 
-            elif tool["name"] == "grasp_object":
-                if tool["arguments"]["object"] in self.object_locations:
-                    if self.object_locations[tool["arguments"]["object"]] == self.current_location:
-                        self.object_locations[tool["arguments"]["object"]] = len(self.locations)
-                        self.get_logger().info("Grasped object '" + tool["arguments"]["object"] + "'")
-                        self.update_tools()
-                        text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text="The robot successfully grasped the object '" + tool["arguments"]["object"] + "'.", role="tool", reset_context=False, tool_response_id=tool["id"], response_type="none" if in_between_reasoning else "always", retry=True)[2:]
-                    else:
-                        # text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text="The " + tool["arguments"]["object"] + " is not in reach.", role="tool", reset_context=False, tool_response_id=tool["id"], response_type="none" if in_between_reasoning else "always", retry=True)[2:]
-                        stop_reason = "Object '" + tool["arguments"]["object"] + "' is not in reach"
-                        break
-                else:
-                    stop_reason = "Object '" + tool["arguments"]["object"] + "' is not a valid object"
-                    break
+            elif tool["name"] == "check_light":
+                completion = self.api_director.prompt(completions_id=self.completions_id, text="The robot detected the the light at it's current location to be " + ("on" if light_status[self.current_location] else "off") + ".", role="tool", reset_context=False, tool_response_id=tool["id"], response_type="none" if in_between_reasoning else "always", retry=True)[2]
 
-            elif tool["name"] == "place_object":
-                if tool["arguments"]["object"] in self.object_locations:
-                    if self.object_locations[tool["arguments"]["object"]] == len(self.locations):
-                        self.object_locations[tool["arguments"]["object"]] = self.current_location
-                        self.get_logger().info("Placed object '" + tool["arguments"]["object"] + "'")
-                        self.update_tools()
-                        text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text="The robot successfully placed the object '" + tool["arguments"]["object"] + "' at the current location.", role="tool", reset_context=False, tool_response_id=tool["id"], response_type="none" if in_between_reasoning else "always", retry=True)[2:]
-                    else:
-                        stop_reason = "Object '" + tool["arguments"]["object"] + "' is not grasped"
-                        break
-                else:
-                    stop_reason = "Object '" + tool["arguments"]["object"] + "' is not a valid object"
-                    break
+            elif tool["name"] == "toggle_light":
+                light_status[self.current_location] = not light_status[self.current_location]
+                self.get_logger().info("Light in '" + self.locations[self.current_location] + "' set to " + ("'on'" if light_status[self.current_location] else "'off'"))
+                completion = self.api_director.prompt(completions_id=self.completions_id, text="The robot successfully toggled the light at it's current location.", role="tool", reset_context=False, tool_response_id=tool["id"], response_type="none" if in_between_reasoning else "always", retry=True)[2]
 
             elif tool["name"] == "task_is_accomplished":
                 stop_reason = "Model called task_is_accomplished()"
@@ -275,8 +244,8 @@ class ToyExample(Node):
                 break
 
             if in_between_reasoning:
-                text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[0], role="user", reset_context=False, response_type="text", retry=True)[2:]
-                text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[1], role="user", reset_context=False, response_type="always", retry=True)[2:]
+                completion = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[0], role="user", reset_context=False, response_type="text", retry=True)[2]
+                completion = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[1], role="user", reset_context=False, response_type="always", retry=True)[2]
 
         ### evaluate
 
@@ -294,7 +263,7 @@ class ToyExample(Node):
             self.get_logger().warn("Attempt " + str(len(self.results) + 1) + "/" + str(attempts) + " done (goal_reached=" + str(success) + ", iterations=" + str(iterations) + ")")
         if not success:
             self.get_logger().info("Current location: " + self.locations[self.current_location])
-            self.get_logger().info("Objects & locations: " + str(self.object_locations))
+            self.get_logger().info("Lights: " + str(light_status))
 
         self.results.append((success, iterations, stop_reason, toc - tic))
 
@@ -329,34 +298,20 @@ class ToyExample(Node):
         })
 
         tools.append({
-            "name": "grasp_object",
-            "description": "Grasp an object that is within reach from the current location",
+            "name": "check_light",
+            "description": "Check if the light at the current location is on or off",
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "object": {
-                        "type": "string",
-                        "description": "The object to be grasped",
-                        "enum": [k for k, v in self.object_locations.items() if v == self.current_location]
-                    }
-                },
-                "required": ["object"]
+                "properties": {}
             }
         })
 
         tools.append({
-            "name": "place_object",
-            "description": "Place an object held in your hand at the current location",
+            "name": "toggle_light",
+            "description": "Toggle the light at the current location",
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "object": {
-                        "type": "string",
-                        "description": "The object to be placed",
-                        "enum": [k for k, v in self.object_locations.items() if v == len(self.locations)]
-                    }
-                },
-                "required": ["object"]
+                "properties": {}
             }
         })
 
@@ -368,22 +323,6 @@ class ToyExample(Node):
                 "properties": {}
             }
         })
-
-        # tools.append({
-        #       "name": "task_completed",
-        #       "description": "The given task '" + self.task + "' is either fully accomplished or cannot be fully accomplished even though you tried everything",
-        #       "parameters": {
-        #           "type": "object",
-        #           "properties": {
-        #               "success": {
-        #                   "type": "boolean",
-        #                   "description": "'true' if the task is fully accomplished or 'false' if it cannot be fully accomplished",
-        #                   "enum": [k for k, v in self.object_locations.items() if v == len(self.locations)]
-        #               }
-        #           },
-        #           "required": ["success"]
-        #       }
-        #   })
 
         # deception
 

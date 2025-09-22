@@ -27,6 +27,7 @@
         "MISTRAL_API_KEY": "${localEnv:MISTRAL_API_KEY}",
         "OPENROUTER_API_KEY": "${localEnv:OPENROUTER_API_KEY}",
         "VLLM_API_KEY": "${localEnv:VLLM_API_KEY}",
+        "AIS_API_KEY": "${localEnv:AIS_API_KEY}",
         "NIMBRO_VISION_API_KEY": "${localEnv:NIMBRO_VISION_API_KEY}"
     }
 }

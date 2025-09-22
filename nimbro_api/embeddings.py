@@ -4,26 +4,26 @@ import os
 import copy
 import json
 import time
+import datetime
 
 import requests
 
 import rclpy
 from rclpy.node import Node
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
-from rcl_interfaces.msg import ParameterDescriptor, ParameterType, IntegerRange
 from ament_index_python.packages import get_package_prefix
+from std_msgs.msg import String
 
-from nimbro_api.utils.misc import count_tokens
-from nimbro_api.utils.node import start_and_spin_node
-from nimbro_api.utils.misc import read_json, write_json
-from nimbro_api.utils.parameter_handler import ParameterHandler
-from nimbro_api_interfaces.srv import GetEmbeddings
-from nimbro_api_interfaces.msg import Embedding, ApiUsage
+from nimbro_api_interfaces.srv import EmbeddingsGet
+from nimbro_api_interfaces.msg import Embedding
+from nimbro_api.misc.common import validate_default_endpopints, filter_api_endpoint, validate_api_endpoint, retrieve_api_key, probe_models_api, validate_connection
+
+from nimbro_utils.lazy import start_and_spin_node, ParameterHandler, Logger, read_json, write_json, count_tokens, convert_stamp, log_lines
 
 ### <Parameter Defaults>
 
 node_name = "embeddings"
-logger_level = 10
+severity = 10
 
 probe_api_connection = True
 api_endpoint = "OpenAI"
@@ -31,8 +31,6 @@ model_name = "text-embedding-3-large"
 
 cache_use = True
 cache_read_once = True
-# cache_write_lazy = True
-# cache_write_interval = 30.0
 cache_folder = os.path.join(get_package_prefix("nimbro_api").replace("install", "src"), "cache", "embeddings")
 cache_file = "cache_embeddings_index.json"
 
@@ -40,6 +38,7 @@ monitor_usage = True
 
 ## non-params
 
+line_length = 150
 embeddings_per_file = 100
 embeddings_name_template = "cache_embeddings_{file_id}.json"
 max_texts_per_post = 100 # batches posts including more texts to mistral to stay below token limit
@@ -65,6 +64,13 @@ api_endpoints = {
         'embeddings_url': "http://localhost:8000/v1/embeddings",
         'key_type': "environment",
         'key_value': "VLLM_API_KEY"
+    },
+    'AIS': {
+        'api_flavor': "openai",
+        'models_url': "https://api-code.ais.uni-bonn.de/v1/models",
+        'embeddings_url': "https://api-code.ais.uni-bonn.de/v1/embeddings",
+        'key_type': "environment",
+        'key_value': "AIS_API_KEY"
     }
 }
 
@@ -74,329 +80,147 @@ class Embeddings(Node):
 
     def __init__(self, name=node_name, *, context=None, **kwargs):
         super().__init__(name, context=context, **kwargs)
+
         self.node_name = self.get_name()
         self.node_namespace = self.get_namespace()
+
+        self._logger = Logger(self)
+
+        # initialize endpoints
 
         self.endpoint_keys_required = {'name', 'api_flavor', 'embeddings_url', 'key_type', 'key_value'}
         self.endpoint_keys_optional = {'models_url'}
         self.endpoint_key_type_values = ["environment", "plain"]
         self.endpoint_api_flavor_values = ["openai", "mistral"]
+        validate_default_endpopints.__get__(self)(api_endpoints)
 
-        assert isinstance(api_endpoints, dict), f"{type(api_endpoints).__name__}"
-        endpoint_keys_required = self.endpoint_keys_required - {'name'}
-        for endpoint_name in api_endpoints:
-            assert isinstance(endpoint_name, str), f"Endpoint names must be of type 'str' instead of '{type(endpoint_name).__name__}'."
-            endpoint = api_endpoints[endpoint_name]
-            assert isinstance(endpoint, dict), f"Endpoint '{endpoint_name}' must be of type 'dict' instead of '{type(endpoint).__name__}'."
-            assert all(isinstance(key, str) for key in endpoint), f"Endpoint '{endpoint_name}' must contain only keys of type 'str' instead of {[type(key).__name__ for key in endpoint]}."
-            assert set(endpoint.keys()) >= endpoint_keys_required, f"Endpoint '{endpoint_name}' must contain keys {sorted(endpoint_keys_required)} (and optionally {sorted(self.endpoint_keys_optional)}) instead of {sorted(endpoint.keys())}."
-            assert set(endpoint.keys()) <= endpoint_keys_required | self.endpoint_keys_optional, f"Endpoint '{endpoint_name}' must contain keys {sorted(endpoint_keys_required)} (and optionally {sorted(self.endpoint_keys_optional)}) instead of {sorted(endpoint.keys())}."
-            assert all(isinstance(endpoint[key], str) for key in endpoint), f"Endpoint '{endpoint_name}' must contain only values of type 'str' instead of {[type(endpoint[key]).__name__ for key in endpoint]}."
-            assert endpoint['api_flavor'] in self.endpoint_api_flavor_values, f"Endpoint '{endpoint_name}' must contain key 'api_flavor' with value in {self.endpoint_api_flavor_values} instead of '{endpoint['api_flavor']}'."
-            assert endpoint['key_type'] in self.endpoint_key_type_values, f"Endpoint '{endpoint_name}' must contain key 'key_type' with value in {self.endpoint_key_type_values} instead of '{endpoint['key_type']}'."
+        self.filter_api_endpoint = filter_api_endpoint.__get__(self)
+        self.validate_api_endpoint = validate_api_endpoint.__get__(self)
+        self.retrieve_api_key = retrieve_api_key.__get__(self)
+        self.probe_models_api = probe_models_api.__get__(self)
+        self.validate_connection = validate_connection.__get__(self)
 
         self.api_endpoints = api_endpoints
         self.endpoint_probes = {}
 
+        # declare parameters
+
         self.parameter_handler = ParameterHandler(self)
-        self.add_on_set_parameters_callback(self.parameter_handler.parameter_callback)
 
-        descriptor = ParameterDescriptor()
-        descriptor.name = "logger_level"
-        descriptor.type = ParameterType.PARAMETER_INTEGER
-        descriptor.description = "Logger level of this node (DEBUG=10, INFO=20, WARN=30, ERROR=40, FATAL=50)."
-        descriptor.read_only = False
-        int_range = IntegerRange()
-        int_range.from_value = 10
-        int_range.to_value = 50
-        int_range.step = 10
-        descriptor.integer_range.append(int_range)
-        self.parameter_descriptors.append(descriptor)
-        self.declare_parameter(descriptor.name, logger_level, descriptor)
+        self.parameter_handler.declare(
+            name="severity",
+            dtype=int,
+            default_value=severity,
+            description="Logging severity of node logger.",
+            read_only=False,
+            range_min=10,
+            range_max=50,
+            range_step=10
+        )
 
-        descriptor = ParameterDescriptor()
-        descriptor.name = "probe_api_connection"
-        descriptor.type = ParameterType.PARAMETER_BOOL
-        descriptor.description = "Probes the Models API of the endpoint to validate the API key and model name."
-        descriptor.read_only = False
-        self.parameter_descriptors.append(descriptor)
-        self.declare_parameter(descriptor.name, probe_api_connection, descriptor)
+        self.parameter_handler.declare(
+            name="probe_api_connection",
+            dtype=bool,
+            default_value=probe_api_connection,
+            description="Probes the Models API of the endpoint to validate the API key and model name.",
+            read_only=False
+        )
 
-        descriptor = ParameterDescriptor()
-        descriptor.name = "api_endpoint"
-        descriptor.type = ParameterType.PARAMETER_STRING
-        descriptor.description = f"Sets the API endpoint defining API flavor, Models & Embeddings URLs, key type and value. Must be a valid JSON encoded dictionary or a name in {list(api_endpoints.keys())}."
-        descriptor.read_only = False
-        self.parameter_descriptors.append(descriptor)
-        self.declare_parameter(descriptor.name, api_endpoint, descriptor)
+        self.parameter_handler.declare(
+            name="api_endpoint",
+            dtype=str,
+            default_value=api_endpoint,
+            description=f"Sets the API endpoint defining API flavor, Models & Embeddings URLs, key type and value. Must be a valid JSON encoded dictionary or a name in {list(api_endpoints.keys())}.",
+            read_only=False
+        )
 
-        descriptor = ParameterDescriptor()
-        descriptor.name = "model_name"
-        descriptor.type = ParameterType.PARAMETER_STRING
-        descriptor.description = "Name of the model that is used."
-        descriptor.read_only = False
-        self.parameter_descriptors.append(descriptor)
-        self.declare_parameter(descriptor.name, model_name, descriptor)
+        self.parameter_handler.declare(
+            name="model_name",
+            dtype=str,
+            default_value=model_name,
+            description="Name of the model that is used.",
+            read_only=False
+        )
 
-        descriptor = ParameterDescriptor()
-        descriptor.name = "cache_use"
-        descriptor.type = ParameterType.PARAMETER_BOOL
-        descriptor.description = "Attempt to retrieve embeddings from cached results."
-        descriptor.read_only = False
-        self.parameter_descriptors.append(descriptor)
-        self.declare_parameter(descriptor.name, cache_use, descriptor)
+        self.parameter_handler.declare(
+            name="cache_use",
+            dtype=bool,
+            default_value=cache_use,
+            description="Attempt to retrieve embeddings from cached results.",
+            read_only=False
+        )
 
-        descriptor = ParameterDescriptor()
-        descriptor.name = "cache_read_once"
-        descriptor.type = ParameterType.PARAMETER_BOOL
-        descriptor.description = "Read embeddings cache file once when required and keep it in memory instead of loading it every time."
-        descriptor.read_only = False
-        self.parameter_descriptors.append(descriptor)
-        self.declare_parameter(descriptor.name, cache_read_once, descriptor)
+        self.parameter_handler.declare(
+            name="cache_read_once",
+            dtype=bool,
+            default_value=cache_read_once,
+            description="Read embeddings cache file once when required and keep it in memory instead of loading it every time.",
+            read_only=False
+        )
 
-        # descriptor = ParameterDescriptor()
-        # descriptor.name = "cache_write_lazy"
-        # descriptor.type = ParameterType.PARAMETER_BOOL
-        # descriptor.description = "Write embeddings cache file in fixed intervals instead of writing it with every update."
-        # descriptor.read_only = False
-        # self.parameter_descriptors.append(descriptor)
-        # self.declare_parameter(descriptor.name, cache_write_lazy, descriptor)
+        self.parameter_handler.declare(
+            name="cache_folder",
+            dtype=str,
+            default_value=cache_folder,
+            description="Path to the cache folder. If it does not exist it is automatically created.",
+            read_only=False
+        )
 
-        # descriptor = ParameterDescriptor()
-        # descriptor.name = "cache_write_interval"
-        # descriptor.type = ParameterType.PARAMETER_DOUBLE
-        # descriptor.description = "Minimum time in seconds in which the embeddings cache file is written if cache_write_lazy is active."
-        # descriptor.read_only = True
-        # float_range = FloatingPointRange()
-        # float_range.from_value = 10.0
-        # float_range.to_value = 3600.0
-        # float_range.step = 0.0
-        # descriptor.floating_point_range.append(float_range)
-        # self.parameter_descriptors.append(descriptor)
-        # self.declare_parameter(descriptor.name, cache_write_interval, descriptor)
+        self.parameter_handler.declare(
+            name="cache_file",
+            dtype=str,
+            default_value=cache_file,
+            description="Name of the cache file inside the cache folder. If it does not exist it is automatically created.",
+            read_only=False
+        )
 
-        descriptor = ParameterDescriptor()
-        descriptor.name = "cache_folder"
-        descriptor.type = ParameterType.PARAMETER_STRING
-        descriptor.description = "Path to the cache folder. If it does not exist it is automatically created."
-        descriptor.read_only = False
-        self.parameter_descriptors.append(descriptor)
-        self.declare_parameter(descriptor.name, cache_folder, descriptor)
+        self.parameter_handler.declare(
+            name="monitor_usage",
+            dtype=bool,
+            default_value=monitor_usage,
+            description="Tokenize input strings to monitor usage.",
+            read_only=False
+        )
 
-        descriptor = ParameterDescriptor()
-        descriptor.name = "cache_file"
-        descriptor.type = ParameterType.PARAMETER_STRING
-        descriptor.description = "Name of the cache file inside the cache folder. If it does not exist it is automatically created."
-        descriptor.read_only = False
-        self.parameter_descriptors.append(descriptor)
-        self.declare_parameter(descriptor.name, cache_file, descriptor)
-
-        descriptor = ParameterDescriptor()
-        descriptor.name = "monitor_usage"
-        descriptor.type = ParameterType.PARAMETER_BOOL
-        descriptor.description = "Tokenize input strings to monitor usage."
-        descriptor.read_only = False
-        self.parameter_descriptors.append(descriptor)
-        self.declare_parameter(descriptor.name, monitor_usage, descriptor)
-
-        self.parameter_handler.all_declared()
+        # create interfaces
 
         qos_profile_srv = rclpy.qos.QoSProfile(reliability=rclpy.qos.ReliabilityPolicy.RELIABLE, history=rclpy.qos.HistoryPolicy.KEEP_LAST, depth=7)
-        self.srv_embeddings = self.create_service(GetEmbeddings, f"{self.node_namespace}/{self.node_name}/get_embeddings".replace("//", "/"), self.get_embeddings_callack, qos_profile=qos_profile_srv, callback_group=ReentrantCallbackGroup())
+        self.srv_embeddings = self.create_service(EmbeddingsGet, f"{self.node_namespace}/{self.node_name}/get_embeddings".replace("//", "/"), self.get_embeddings_callack, qos_profile=qos_profile_srv, callback_group=ReentrantCallbackGroup())
 
         qos_profile_pub = rclpy.qos.QoSProfile(reliability=rclpy.qos.ReliabilityPolicy.RELIABLE, history=rclpy.qos.HistoryPolicy.KEEP_ALL, depth=10)
-        self.pub_usage = self.create_publisher(ApiUsage, f"{self.node_namespace}/api_usage".replace("//", "/"), qos_profile=qos_profile_pub, callback_group=MutuallyExclusiveCallbackGroup())
+        self.pub_usage = self.create_publisher(String, f"{self.node_namespace}/api_usage".replace("//", "/"), qos_profile=qos_profile_pub, callback_group=MutuallyExclusiveCallbackGroup())
 
-        self.get_logger().info("Node started")
+        self._logger.info("Node started")
 
     def __del__(self):
-        self.get_logger().info("Node shutdown")
+        self._logger.info("Node shutdown")
 
-    def parameter_changed(self, parameter):
-        success = True
-        reason = ""
+    def filter_parameter(self, name, value, is_declared):
+        message = None
 
-        if parameter.name == "logger_level":
-            self.logger_level = parameter.value
-            rclpy.logging.set_logger_level(f"{self.node_namespace}/{self.node_name}".replace("//", "/")[1:].replace("/", "."), rclpy.logging.LoggingSeverity(self.logger_level))
+        if name == "severity":
+            self._logger.set_settings(settings={'severity': value})
 
-        elif parameter.name == "probe_api_connection":
-            if not self.setup_finished or self.probe_api_connection != parameter.value:
-                self.probe_api_connection = parameter.value
-                if self.probe_api_connection and self.setup_finished:
-                    if self.endpoint_probes.get(self.api_endpoint) is None and self.api_endpoints[self.api_endpoint].get('models_url') is not None:
-                        success, reason = self.probe_models_api(self.api_endpoint)
-                    else:
-                        self.get_logger().debug(f"Probing Models API for endpoint '{self.api_endpoint}' is not required")
-                    if success and self.api_endpoint in self.endpoint_probes and self.model_name not in self.endpoint_probes[self.api_endpoint]['models']:
-                        self.get_logger().warn(f"Selected model name '{self.model_name}' is not in list of available models: {self.endpoint_probes[self.api_endpoint]['models']}")
+        elif name == "probe_api_connection":
+            if is_declared and value != self.parameters.probe_api_connection:
+                self._logger.debug("Reset endpoint probes")
+                self.endpoint_probes = {}
 
-        elif parameter.name == "api_endpoint":
-            probe = None
-            if parameter.value in list(self.api_endpoints.keys()):
-                json_object = None
-                if self.endpoint_probes.get(parameter.value) is None and self.api_endpoints[parameter.value].get('models_url') is not None:
-                    probe = parameter.value
-            else:
-                success, reason, json_object = self.validate_api_endpoint(parameter.value)
-                if success:
-                    if json_object['name'] in list(self.api_endpoints.keys()):
-                        json_object_without_name = copy.deepcopy(json_object)
-                        del json_object_without_name['name']
-                        for key in ['models_url', 'key_type', 'key_value']:
-                            if self.api_endpoints[json_object['name']][key] != json_object_without_name[key] and json_object.get('models_url') is not None:
-                                probe = json_object
-                    elif json_object.get('models_url') is not None:
-                        probe = json_object
+        elif name == "api_endpoint":
+            value, message = self.filter_api_endpoint(name, value, line_length)
 
-            if success and self.probe_api_connection is True:
-                if probe is None:
-                    self.get_logger().debug(f"Probing Models API for endpoint '{parameter.value if json_object is None else json_object['name']}' is not required")
-                else:
-                    success, reason = self.probe_models_api(probe)
-                if success and self.setup_finished and self.model_name not in self.endpoint_probes.get(parameter.value if json_object is None else json_object['name'], {'models': [self.model_name]})['models']:
-                    self.get_logger().warn(f"Selected model name '{self.model_name}' is not in list of available models: {self.endpoint_probes[parameter.value if json_object is None else json_object['name']]['models']}")
-
-            if success:
-                names_before = list(self.api_endpoints.keys())
-                dicts_before = copy.deepcopy(self.api_endpoints)
-
-                if json_object is None:
-                    self.api_endpoint = parameter.value
-                else:
-                    self.api_endpoint = json_object['name']
-                    self.api_endpoints[self.api_endpoint] = json_object
-                    del self.api_endpoints[self.api_endpoint]['name']
-
-                if self.api_endpoint in names_before:
-                    if self.api_endpoints[self.api_endpoint] != dicts_before[self.api_endpoint]:
-                        self.get_logger().info(f"Updated API endpoint '{self.api_endpoint}'")
-                else:
-                    self.get_logger().info(f"Created new API endpoint '{self.api_endpoint}'")
-
-        elif parameter.name == "model_name":
-            if self.probe_api_connection:
-                if parameter.value in self.endpoint_probes.get(self.api_endpoint, {}).get('models', [parameter.value]):
-                    self.model_name = parameter.value
-                else:
-                    success = False
-                    reason = f"Model '{parameter.value}' is not in list of available models {self.endpoint_probes[self.api_endpoint]['models']}."
-
-        elif parameter.name == "cache_use":
-            self.cache_use = parameter.value
+        elif name == "cache_use":
             self.index = None
 
-        elif parameter.name == "cache_read_once":
-            self.cache_read_once = parameter.value
-            if not self.cache_read_once:
+        elif name == "cache_read_once":
+            if value is False:
                 self.index = None
 
-        # elif parameter.name == "cache_write_lazy":
-        #     self.cache_write_lazy = parameter.value
+        elif name == "cache_folder":
+            if value == "":
+                value = os.path.join(get_package_prefix("nimbro_api").replace("install", "src"), "cache")
 
-        # elif parameter.name == "cache_write_interval":
-        #     self.cache_write_interval = parameter.value
-
-        elif parameter.name == "cache_folder":
-            if parameter.value == "":
-                self.cache_folder = os.path.join(get_package_prefix("nimbro_api").replace("install", "src"), "cache")
-                self._node.get_logger().info(f"Interpreting empty parameter 'cache_folder' as '{self.cache_folder}'")
-            else:
-                self.cache_folder = parameter.value
-
-        elif parameter.name == "cache_file":
-            self.cache_file = parameter.value
-
-        elif parameter.name == "monitor_usage":
-            self.monitor_usage = parameter.value
-
-        else:
-            return None, None
-
-        return success, reason
-
-    def validate_api_endpoint(self, api_endpoint):
-        try:
-            json_object = json.loads(api_endpoint)
-        except Exception:
-            success = False
-            message = f"Value must be a name of an existing endpoints in {list(self.api_endpoints.keys())} or a valid JSON encoded dictionary containing a new endpoint."
-            json_object = None
-        else:
-            if not isinstance(json_object, dict):
-                success = False
-                message = f"JSON encoded endpoint must be of type 'dict' instead of '{type(json_object).__name__}'."
-            elif not all(isinstance(key, str) for key in json_object):
-                success = False
-                message = f"JSON encoded endpoint must contain only values of type 'str' instead of {[type(key).__name__ for key in json_object]}."
-            elif not set(json_object.keys()) >= self.endpoint_keys_required:
-                success = False
-                message = f"JSON encoded endpoint must contain keys {sorted(self.endpoint_keys_required)} (and optionally {sorted(self.endpoint_keys_optional)}) instead of {sorted(json_object.keys())}."
-            elif not set(json_object.keys()) <= self.endpoint_keys_required | self.endpoint_keys_optional:
-                success = False
-                message = f"JSON encoded endpoint must contain keys {sorted(self.endpoint_keys_required)} (and optionally {sorted(self.endpoint_keys_optional)}) instead of {sorted(json_object.keys())}."
-            elif not all(isinstance(json_object[key], str) for key in json_object):
-                success = False
-                message = f"JSON encoded endpoint must contain only values of type 'str' instead of {[type(json_object[key]).__name__ for key in json_object]}."
-            elif not json_object['api_flavor'] in self.endpoint_api_flavor_values:
-                success = False
-                message = f"JSON encoded endpoint must contain key 'api_flavor' with value in {self.endpoint_api_flavor_values} instead of '{json_object['api_flavor']}'."
-            elif not json_object['key_type'] in self.endpoint_key_type_values:
-                success = False
-                message = f"JSON encoded endpoint must contain key 'key_type' with value in {self.endpoint_key_type_values} instead of '{json_object['key_type']}'."
-            else:
-                success = True
-                message = ""
-
-        return success, message, json_object
-
-    def probe_models_api(self, api_endpoint):
-        if isinstance(api_endpoint, str):
-            api_endpoint_name = api_endpoint
-            api_endpoint = self.api_endpoints[api_endpoint]
-        else:
-            api_endpoint_name = api_endpoint['name']
-
-        success = True
-        message = ""
-
-        if api_endpoint['key_type'] == "environment":
-            api_key = os.getenv(api_endpoint['key_value'])
-            if api_key is None:
-                success = False
-                message = f"Error while probing Models API: Failed to read API key from environment variable '{api_endpoint['key_value']}')."
-        else:
-            api_key = api_endpoint['key_value']
-
-        if success:
-            self.get_logger().debug(f"Probing Models API '{api_endpoint['models_url']}' of endpoint '{api_endpoint_name}' using key '{api_key}'")
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_key}"
-            }
-            try:
-                response = requests.get(api_endpoint['models_url'], headers=headers)
-            except Exception as e:
-                success = False
-                message = f"Error while probing Models API: Failed to retrieve available models: {repr(e)}"
-            else:
-                if response.status_code != 200:
-                    success = False
-                    message = f"Error while probing Models API: Received unexpected HTTP status code '{response.status_code}' with message '{response.text}'."
-                else:
-                    available_models = [m['id'] for m in response.json()['data']]
-                    if len(available_models) == 0:
-                        self.get_logger().warn("There are no models available")
-                    else:
-                        self.get_logger().debug(f"Available models: {available_models}")
-                    self.endpoint_probes[api_endpoint_name] = {'models': available_models, 'stamp': time.time()}
-
-        if not success:
-            self.get_logger().error(message)
-            if api_endpoint_name in self.endpoint_probes:
-                del self.endpoint_probes[api_endpoint_name]
-
-        return success, message
+        return value, message
 
     # Embeddings Pipeline
 
@@ -412,33 +236,24 @@ class Embeddings(Node):
             'encoding_format': "float"
         }
 
-        # TODO add timeout
-        # try:
-        #     requests.post(url, data=payload, timeout=5)
-        # except requests.Timeout:
-        #     # back off and retry
-        #     pass
-        # except requests.ConnectionError:
-        #     pass
-
-        self.get_logger().debug(f"Posting request: {data}\n to '{api_url}'")
+        self._logger.debug(f"Posting request: {data}\n to '{api_url}'")
         tic = time.perf_counter()
         try:
             response = requests.post(api_url, headers=headers, json=data, stream=False)
         except Exception as e:
             toc = time.perf_counter()
-            self.get_logger().debug(f"Error occurred after '{toc - tic:.3f}s': {repr(e)}")
+            self._logger.debug(f"Error occurred after '{toc - tic:.3f}s': {repr(e)}")
             success = False
             message = f"Failed to POST request: {repr(e)}"
             embeddings = None
         else:
             toc = time.perf_counter()
-            self.get_logger().debug(f"Received response after '{toc - tic:.3f}s'")
+            self._logger.debug(f"Received response after '{toc - tic:.3f}s'")
 
             if response.status_code == 200:
                 response = response.json()
                 success = True
-                message = f"Successfully retrieved '{len(response['data'])}' embedding{'' if len(response['data']) == 1 else 's'}."
+                message = f"Retrieved '{len(response['data'])}' embedding{'' if len(response['data']) == 1 else 's'}."
                 embeddings = [response['data'][i]['embedding'] for i in range(len(response['data']))]
             else:
                 success = False
@@ -447,82 +262,89 @@ class Embeddings(Node):
 
         return success, message, embeddings
 
-    def save_usage(self, texts, identifier):
-        if self.monitor_usage:
+    def save_usage(self, texts, identifier, stamp_start):
+        stamp_stop = datetime.datetime.now()
+
+        if self.parameters.monitor_usage:
             num_tokens = 0
             tic = time.perf_counter()
             for text in texts:
                 try:
-                    num_tokens += count_tokens(text, "cl100k_base") # for third-generation embedding
+                    num_tokens += count_tokens(string=text, encoding_name="cl100k_base") # for third-generation embedding
                 except ModuleNotFoundError:
-                    self.get_logger().warn("Cannot monitor usage because the module tiktoken is not installed")
-                    self.monitor_usage = False # TODO properly deactivate using "from rcl_interfaces.srv import SetParameters"
+                    self._logger.warn("Cannot monitor usage because the module tiktoken is not installed")
+                    self.parameter_handler.update(name="monitor_usage", value=False)
                     return
-            self.get_logger().debug(f"Tokenizing uncached text{'' if len(texts) == 1 else 's'} took '{time.perf_counter() - tic:.3f}s'")
+            self._logger.debug(f"Tokenizing uncached text{'' if len(texts) == 1 else 's'} took '{time.perf_counter() - tic:.3f}s'")
         else:
             return
 
-        usage = ApiUsage()
-        usage.api_type = "embeddings"
-        usage.api_endpoint = self.api_endpoint
-        usage.model_name = self.model_name
-        usage.identifier = identifier
-        usage.tokens_input_uncached = num_tokens
-        usage.tokens_input_cached = 0
-        usage.tokens_output = 0
+        usage = {}
+        usage['api_type'] = "embeddings"
+        usage['api_endpoint'] = self.parameters.api_endpoint
+        usage['model_name'] = self.parameters.model_name
+        if identifier != "":
+            usage['identifier'] = identifier
+        usage['stamp_start'] = convert_stamp(stamp=stamp_start, target_format="iso")
+        usage['stamp_stop'] = convert_stamp(stamp=stamp_stop, target_format="iso")
+        usage['duration'] = (stamp_stop - stamp_start).total_seconds()
+        usage['tokens_input_uncached'] = num_tokens
 
-        self.pub_usage.publish(usage)
+        usage_str = json.dumps(usage, indent=4)
+        log_lines(f"Usage:\n{usage_str}", line_length=150, line_highlight="|", block_format=False, logger=self._logger, severity=10)
 
-        self.get_logger().debug(f"Retrieving missing embedding{'' if len(texts) == 1 else 's'} consumed '{num_tokens}' token{'' if num_tokens == 1 else 's'}")
+        usage_msg = String()
+        usage_msg.data = usage_str
+        self.pub_usage.publish(usage_msg)
 
     def get_embeddings(self, texts, identifier):
         # parse argument
 
         if len(texts) == 0:
-            return True, "Successfully retrieved '0' embeddings.", []
+            return True, "Retrieved '0' embeddings.", []
         if not all(isinstance(t, str) for t in texts):
             message = "All items in list 'texts' must be of type 'str'."
-            self.get_logger().error(message[:-1])
+            self._logger.error(message[:-1])
             return False, message, None
         text_formatted = [t.replace("\n", " ") for t in texts]
 
         for t in text_formatted:
             if t == "":
                 message = "None of the passed texts must be empty."
-                self.get_logger().error(message[:-1])
+                self._logger.error(message[:-1])
                 return False, message, None
 
         embeddings = [None] * len(text_formatted)
 
         # read cache
 
-        cache_use = copy.copy(self.cache_use)
+        cache_use = copy.copy(self.parameters.cache_use)
 
         if not cache_use:
             self.index = None
             missing_idx = list(range(len(text_formatted)))
         else:
-            if not self.cache_read_once or self.index is None:
+            if not self.parameters.cache_read_once or self.index is None:
                 # read index file
-                index_path = os.path.join(self.cache_folder, self.cache_file)
+                index_path = os.path.join(self.parameters.cache_folder, self.parameters.cache_file)
                 if os.path.exists(index_path):
-                    success, _, self.index = read_json(file_path=index_path, logger=self.get_logger())
+                    success, _, self.index = read_json(file_path=index_path, logger=self._logger)
                     if success:
                         if not isinstance(self.index, dict):
                             success = False
-                            self.get_logger().error(f"Expected content of index file to be of type 'dict', but it is of type '{type(self.index).__name__}'", throttle_duration_sec=10.0)
+                            self._logger.error(f"Expected content of index file to be of type 'dict', but it is of type '{type(self.index).__name__}'", throttle_duration_sec=10.0)
                         elif 'files' not in self.index or 'texts' not in self.index:
                             success = False
-                            self.get_logger().error("Expected index file to feature the keys 'files' and 'texts'", throttle_duration_sec=10.0)
+                            self._logger.error("Expected index file to feature the keys 'files' and 'texts'", throttle_duration_sec=10.0)
                         elif not isinstance(self.index['files'], list) or not isinstance(self.index['texts'], dict):
                             success = False
-                            self.get_logger().error("Expected index file keys 'files' and 'texts' to feature values of type 'list' and 'dict'", throttle_duration_sec=10.0)
+                            self._logger.error("Expected index file keys 'files' and 'texts' to feature values of type 'list' and 'dict'", throttle_duration_sec=10.0)
                     if not success:
-                        self.get_logger().warn("Initializing new index file. Corrupt cache files might get overwritten!", throttle_duration_sec=10.0)
+                        self._logger.warn("Initializing new index file. Corrupt cache files might get overwritten!", throttle_duration_sec=10.0)
                         self.index = {'files': [], 'texts': {}}
                 else:
                     success = False
-                    self.get_logger().info("Initializing new index file")
+                    self._logger.info("Initializing new index file")
                     self.index = {'files': [], 'texts': {}}
 
                 self.embeddings_files = {}
@@ -531,38 +353,38 @@ class Embeddings(Node):
 
             corrupted = False
 
-            if self.index['texts'].get(self.model_name) is None:
-                self.get_logger().debug(f"Cannot find model '{self.model_name}' in index file")
+            if self.index['texts'].get(self.parameters.model_name) is None:
+                self._logger.debug(f"Cannot find model '{self.parameters.model_name}' in index file")
                 missing_idx = list(range(len(text_formatted)))
             else:
                 missing_idx = []
                 missing_index_tuples = []
                 missing_file_idx = []
                 for i, t in enumerate(text_formatted):
-                    if self.index['texts'][self.model_name].get(t) is None:
-                        self.get_logger().debug(f"Cannot find text '{t}' in index file")
+                    if self.index['texts'][self.parameters.model_name].get(t) is None:
+                        self._logger.debug(f"Cannot find text '{t}' in index file")
                         missing_idx.append(i)
                     else:
-                        if not isinstance(self.index['texts'][self.model_name][t], list):
-                            self.get_logger().error(f"Cannot find text '{t}' in index file: File is corrupted (value of text is not a list)", throttle_duration_sec=10.0)
+                        if not isinstance(self.index['texts'][self.parameters.model_name][t], list):
+                            self._logger.error(f"Cannot find text '{t}' in index file: File is corrupted (value of text is not a list)", throttle_duration_sec=10.0)
                             corrupted = True
                             missing_idx.append(i)
-                        elif not len(self.index['texts'][self.model_name][t]) == 2:
-                            self.get_logger().error(f"Cannot find text '{t}' in index file: File is corrupted (value of text is not of length 2)", throttle_duration_sec=10.0)
+                        elif not len(self.index['texts'][self.parameters.model_name][t]) == 2:
+                            self._logger.error(f"Cannot find text '{t}' in index file: File is corrupted (value of text is not of length 2)", throttle_duration_sec=10.0)
                             corrupted = True
                             missing_idx.append(i)
-                        elif not isinstance(self.index['texts'][self.model_name][t][0], int) or not isinstance(self.index['texts'][self.model_name][t][1], int):
-                            self.get_logger().error(f"Cannot find text '{t}' in index file: File is corrupted (values of text is not a list of integers)", throttle_duration_sec=10.0)
+                        elif not isinstance(self.index['texts'][self.parameters.model_name][t][0], int) or not isinstance(self.index['texts'][self.parameters.model_name][t][1], int):
+                            self._logger.error(f"Cannot find text '{t}' in index file: File is corrupted (values of text is not a list of integers)", throttle_duration_sec=10.0)
                             corrupted = True
                             missing_idx.append(i)
-                        elif self.index['texts'][self.model_name][t][0] >= len(self.index['files']):
-                            self.get_logger().error(f"Cannot find text '{t}' in index file: File is corrupted (value of text points to file that does not exist)", throttle_duration_sec=10.0)
+                        elif self.index['texts'][self.parameters.model_name][t][0] >= len(self.index['files']):
+                            self._logger.error(f"Cannot find text '{t}' in index file: File is corrupted (value of text points to file that does not exist)", throttle_duration_sec=10.0)
                             corrupted = True
                             missing_idx.append(i)
                         else:
-                            file_id = self.index['texts'][self.model_name][t][0]
-                            embedding_id = self.index['texts'][self.model_name][t][1]
-                            self.get_logger().debug(f"Text '{t}' found in index file (file: '{file_id}', element: '{embedding_id}')")
+                            file_id = self.index['texts'][self.parameters.model_name][t][0]
+                            embedding_id = self.index['texts'][self.parameters.model_name][t][1]
+                            self._logger.debug(f"Text '{t}' found in index file (file: '{file_id}', element: '{embedding_id}')")
                             missing_index_tuples.append((file_id, embedding_id, i))
                             missing_file_idx.append(file_id)
 
@@ -573,24 +395,24 @@ class Embeddings(Node):
                 for i in missing_file_idx:
                     if i not in self.embeddings_files:
                         if not isinstance(self.index['files'][i], list):
-                            self.get_logger().error(f"Cannot find embeddings file '{i}' in index file: File is corrupted (value of file is not a list)", throttle_duration_sec=10.0)
+                            self._logger.error(f"Cannot find embeddings file '{i}' in index file: File is corrupted (value of file is not a list)", throttle_duration_sec=10.0)
                             corrupted = True
                         elif not len(self.index['files'][i]) == 2:
-                            self.get_logger().error(f"Cannot find embeddings file '{i}' in index file: File is corrupted (value of file is not of length 2)", throttle_duration_sec=10.0)
+                            self._logger.error(f"Cannot find embeddings file '{i}' in index file: File is corrupted (value of file is not of length 2)", throttle_duration_sec=10.0)
                             corrupted = True
                         elif not isinstance(self.index['files'][i][0], str):
-                            self.get_logger().error(f"Cannot find embeddings file '{i}' in index file: File is corrupted (value of first element is not a string)", throttle_duration_sec=10.0)
+                            self._logger.error(f"Cannot find embeddings file '{i}' in index file: File is corrupted (value of first element is not a string)", throttle_duration_sec=10.0)
                             corrupted = True
                         else:
-                            embeddings_file_path = os.path.join(self.cache_folder, self.index['files'][i][0])
-                            success, _, embeddings_file = read_json(file_path=embeddings_file_path, logger=self.get_logger())
+                            embeddings_file_path = os.path.join(self.parameters.cache_folder, self.index['files'][i][0])
+                            success, _, embeddings_file = read_json(file_path=embeddings_file_path, logger=self._logger)
                             if not success:
                                 pass
                             elif not isinstance(embeddings_file, list):
-                                self.get_logger().warn(f"Embeddings file '{embeddings_file_path}' is corrupted (content is not a list) (1)", throttle_duration_sec=10.0)
+                                self._logger.warn(f"Embeddings file '{embeddings_file_path}' is corrupted (content is not a list) (1)", throttle_duration_sec=10.0)
                                 corrupted = True
                             elif len(embeddings_file) != self.index['files'][i][1]:
-                                self.get_logger().warn(f"Embeddings file '{embeddings_file_path}' is corrupted (actual size '{len(embeddings_file)}' does not match size in index '{self.index['files'][i][1]}') (1)", throttle_duration_sec=10.0)
+                                self._logger.warn(f"Embeddings file '{embeddings_file_path}' is corrupted (actual size '{len(embeddings_file)}' does not match size in index '{self.index['files'][i][1]}') (1)", throttle_duration_sec=10.0)
                                 corrupted = True
                             else:
                                 self.embeddings_files[i] = embeddings_file
@@ -600,66 +422,70 @@ class Embeddings(Node):
                 for file_id, embedding_id, missing_id in missing_index_tuples:
                     if file_id in self.embeddings_files:
                         if embedding_id < len(self.embeddings_files[file_id]):
-                            self.get_logger().debug(f"Found cached embedding for text '{text_formatted[missing_id]}' (file: '{file_id}', element: '{embedding_id}')")
+                            self._logger.debug(f"Found cached embedding for text '{text_formatted[missing_id]}' (file: '{file_id}', element: '{embedding_id}')")
                             embeddings[missing_id] = self.embeddings_files[file_id][embedding_id]
                         else:
-                            self.get_logger().error(f"Cannot find embedding '{missing_id}' in embeddings file '{file_id}': File is corrupted (file only contains '{len(self.embeddings_files[file_id])}' embeddings)", throttle_duration_sec=10.0)
+                            self._logger.error(f"Cannot find embedding '{embedding_id}' in embeddings file '{file_id}': File is corrupted (file only contains '{len(self.embeddings_files[file_id])}' embeddings)", throttle_duration_sec=10.0)
                             corrupted = True
                             missing_idx.append(missing_id)
                     else:
                         missing_idx.append(missing_id)
 
         if len(missing_idx) == 0:
-            self.get_logger().debug("All requested embeddings were found in cache")
+            self._logger.debug("All requested embeddings were found in cache")
         else:
-            # retrieve API key
-
-            if self.api_endpoints[self.api_endpoint]['key_type'] == "environment":
-                api_key = os.getenv(self.api_endpoints[self.api_endpoint]['key_value'])
-                if api_key is None:
-                    message = f"Failed to read API key from environment variable '{self.api_endpoints[self.api_endpoint]['key_value']}')."
-                    self.get_logger().error(message)
+            # validate connection
+            if self.parameters.probe_api_connection:
+                success, message = self.validate_connection(model=self.parameters.model_name)
+                if not success:
                     return False, message, None
-            else:
-                api_key = self.api_endpoints[self.api_endpoint]['key_value']
-            self.get_logger().debug(f"Retrieved API key '{api_key}'")
+
+            # retrieve API key
+            success, message, api_key = self.retrieve_api_key()
+            if not success:
+                self._logger.error(message)
+                return False, message, None
 
             # retrieve missing embeddings
 
-            self.get_logger().info(f"Retrieving '{len(missing_idx)}' missing embedding{'' if len(missing_idx) == 1 else 's'} from API")
+            self._logger.info(f"Retrieving '{len(missing_idx)}' missing embedding{'' if len(missing_idx) == 1 else 's'} from API")
             missing_texts = [text_formatted[i] for i in missing_idx]
 
             floor_mod = (len(missing_texts) // max_texts_per_post, len(missing_texts) % max_texts_per_post)
             missing_embeddings = []
             for i in range(floor_mod[0]):
+                stamp_start = datetime.datetime.now()
+
                 success, message, embeddings_batch = self.embeddings_post(
                     texts=missing_texts[i * max_texts_per_post: (i + 1) * max_texts_per_post],
-                    model=self.model_name,
-                    api_url=self.api_endpoints[self.api_endpoint]['embeddings_url'],
+                    model=self.parameters.model_name,
+                    api_url=self.api_endpoints[self.parameters.api_endpoint]['embeddings_url'],
                     api_key=api_key
                 )
                 if success:
                     missing_embeddings += embeddings_batch
                 else:
-                    self.get_logger().error(message)
+                    self._logger.error(message)
                     return False, message, None
             if floor_mod[1] > 0:
+                stamp_start = datetime.datetime.now()
+
                 success, message, embeddings_batch = self.embeddings_post(
                     texts=missing_texts[floor_mod[0] * max_texts_per_post:],
-                    model=self.model_name,
-                    api_url=self.api_endpoints[self.api_endpoint]['embeddings_url'],
+                    model=self.parameters.model_name,
+                    api_url=self.api_endpoints[self.parameters.api_endpoint]['embeddings_url'],
                     api_key=api_key
                 )
                 if success:
                     missing_embeddings += embeddings_batch
                 else:
-                    self.get_logger().error(message)
+                    self._logger.error(message)
                     return False, message, None
             if success:
-                self.get_logger().debug(f"Retrieved '{len(missing_idx)}' missing embedding{'' if len(missing_idx) == 1 else 's'} from API")
-                self.save_usage(missing_texts, identifier)
+                self._logger.debug(f"Retrieved '{len(missing_idx)}' missing embedding{'' if len(missing_idx) == 1 else 's'} from API")
+                self.save_usage(missing_texts, identifier, stamp_start)
             else:
-                self.get_logger().error(message)
+                self._logger.error(message)
                 return False, message, None
 
             # fill up missing embeddings
@@ -675,18 +501,18 @@ class Embeddings(Node):
                     for j, (file_name, file_size) in enumerate(self.index['files']):
                         if file_size < embeddings_per_file:
                             if j not in self.embeddings_files and j:
-                                embeddings_file_path = os.path.join(self.cache_folder, self.index['files'][j][0])
-                                success, _, embeddings_file = read_json(file_path=embeddings_file_path, logger=self.get_logger())
+                                embeddings_file_path = os.path.join(self.parameters.cache_folder, self.index['files'][j][0])
+                                success, _, embeddings_file = read_json(file_path=embeddings_file_path, logger=self._logger)
                                 if not success:
                                     pass
                                 elif not isinstance(embeddings_file, list):
-                                    self.get_logger().warn(f"Embeddings file '{embeddings_file_path}' is corrupted (content is not a list) (2)", throttle_duration_sec=10.0)
-                                    self.cache_use = False
+                                    self._logger.warn(f"Embeddings file '{embeddings_file_path}' is corrupted (content is not a list) (2)", throttle_duration_sec=10.0)
+                                    self.parameters.cache_use = False
                                     corrupted = True
                                     break
                                 elif len(embeddings_file) != self.index['files'][j][1]:
-                                    self.get_logger().warn(f"Embeddings file '{embeddings_file_path}' is corrupted (actual size '{len(embeddings_file)}' does not match size in index '{self.index['files'][i][1]}') (2)", throttle_duration_sec=10.0)
-                                    self.cache_use = False
+                                    self._logger.warn(f"Embeddings file '{embeddings_file_path}' is corrupted (actual size '{len(embeddings_file)}' does not match size in index '{self.index['files'][i][1]}') (2)", throttle_duration_sec=10.0)
+                                    self.parameters.cache_use = False
                                     corrupted = True
                                     break
                                 else:
@@ -697,11 +523,11 @@ class Embeddings(Node):
                                 self.embeddings_files[j].append(embeddings[i])
                                 if j not in touched_embeddings_files:
                                     touched_embeddings_files.append(j)
-                                if self.model_name not in self.index['texts']:
-                                    self.index['texts'][self.model_name] = {}
+                                if self.parameters.model_name not in self.index['texts']:
+                                    self.index['texts'][self.parameters.model_name] = {}
                                 embedding_id = len(self.embeddings_files[j]) - 1
-                                self.index['texts'][self.model_name][text_formatted[i]] = [j, embedding_id]
-                                self.get_logger().debug(f"Caching text '{text_formatted[i]}' (file: '{j}', element: '{embedding_id}')")
+                                self.index['texts'][self.parameters.model_name][text_formatted[i]] = [j, embedding_id]
+                                self._logger.debug(f"Caching text '{text_formatted[i]}' (file: '{j}', element: '{embedding_id}')")
                                 break
 
                         if corrupted:
@@ -710,42 +536,41 @@ class Embeddings(Node):
                     else:
                         j = len(self.index['files'])
                         new_name = embeddings_name_template.format(file_id=j)
-                        self.get_logger().debug(f"Creating new embeddings file '{new_name}'")
+                        self._logger.debug(f"Creating new embeddings file '{new_name}'")
                         self.embeddings_files[j] = [embeddings[i]]
                         if j not in touched_embeddings_files:
                             touched_embeddings_files.append(j)
                         self.index['files'].append([new_name, 1])
-                        if self.model_name not in self.index['texts']:
-                            self.index['texts'][self.model_name] = {}
+                        if self.parameters.model_name not in self.index['texts']:
+                            self.index['texts'][self.parameters.model_name] = {}
                         embedding_id = len(self.embeddings_files[j]) - 1
-                        self.index['texts'][self.model_name][text_formatted[i]] = [j, embedding_id]
-                        self.get_logger().debug(f"Caching text '{text_formatted[i]}' (file: '{j}', element: '{embedding_id}')")
+                        self.index['texts'][self.parameters.model_name][text_formatted[i]] = [j, embedding_id]
+                        self._logger.debug(f"Caching text '{text_formatted[i]}' (file: '{j}', element: '{embedding_id}')")
 
                     if corrupted:
                         break
 
-                # TODO implement cache_write_lazy
                 if not corrupted:
                     if len(touched_embeddings_files) > 0:
-                        cache_path = os.path.join(self.cache_folder, self.cache_file)
-                        write_json(cache_path, self.index, indent=True, logger=self.get_logger())
+                        cache_path = os.path.join(self.parameters.cache_folder, self.parameters.cache_file)
+                        write_json(cache_path, self.index, indent=True, logger=self._logger)
                     for i in touched_embeddings_files:
-                        embeddings_file_path = os.path.join(self.cache_folder, self.index['files'][i][0])
-                        write_json(embeddings_file_path, self.embeddings_files[i], indent=False, logger=self.get_logger())
+                        embeddings_file_path = os.path.join(self.parameters.cache_folder, self.index['files'][i][0])
+                        write_json(embeddings_file_path, self.embeddings_files[i], indent=False, logger=self._logger)
 
         # forward results
 
         if len(str(text_formatted)) > 100:
-            self.get_logger().info(f"Successfully retrieved '{len(embeddings)}' embedding{'' if len(embeddings) == 1 else 's'} for text{'' if len(text_formatted) == 1 else 's'}: {str(text_formatted)[:100]}...")
+            self._logger.info(f"Retrieved embedding{'' if len(embeddings) == 1 else 's'} for '{len(embeddings)}' text{'' if len(text_formatted) == 1 else 's'}: {str(text_formatted)[:line_length]}...")
         else:
-            self.get_logger().info(f"Successfully retrieved '{len(embeddings)}' embedding{'' if len(embeddings) == 1 else 's'} for text{'' if len(text_formatted) == 1 else 's'}: {text_formatted}")
+            self._logger.info(f"Retrieved embedding{'' if len(embeddings) == 1 else 's'} for '{len(embeddings)}' text{'' if len(text_formatted) == 1 else 's'}: {text_formatted}")
 
-        return True, f"Successfully retrieved '{len(embeddings)}' embedding{'' if len(embeddings) == 1 else 's'}.", embeddings
+        return True, f"Retrieved '{len(embeddings)}' embedding{'' if len(embeddings) == 1 else 's'}.", embeddings
 
     # Callbacks
 
     def get_embeddings_callack(self, request, response):
-        self.get_logger().debug(f"get_embeddings_callack(): start (identifier: '{request.identifier}')")
+        self._logger.debug(f"get_embeddings_callack(): start (identifier: '{request.identifier}')")
 
         response.success, response.message, embeddings = self.get_embeddings(texts=request.texts, identifier=request.identifier)
         if response.success:
@@ -754,7 +579,7 @@ class Embeddings(Node):
                 embedding_msg.embedding = embedding_np
                 response.embeddings.append(embedding_msg)
 
-        self.get_logger().debug("get_embeddings_callack(): end")
+        self._logger.debug("get_embeddings_callack(): end")
         return response
 
 def main(args=None):

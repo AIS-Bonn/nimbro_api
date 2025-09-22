@@ -15,11 +15,9 @@ except ImportError:
 ### <Settings>
 
 # cache file to read
-cache_path = "C:\\Users\\Me\\Desktop\\cache_embeddings.json"
 cache_path = "./../../cache/cache_embeddings.json"
 
 # folder in which the the index and embeddings files are to be saved
-embeddings_folder_path = "C:\\Users\\Me\\Desktop\\embeddings"
 embeddings_folder_path = "./../../cache/embeddings"
 
 # name of index file
@@ -29,7 +27,7 @@ index_name = "cache_embeddings_index.json"
 embeddings_name_template = "cache_embeddings_{file_id}.json"
 
 # number of embeddings per embeddings files
-embeddings_per_file = 100
+embeddings_per_file = 200
 
 ### </Settings>
 

@@ -2,10 +2,12 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>nimbro_api</name>
-  <version>1.0.0</version>
-  <description>This package exposes various APIs (Chat Completions, Embeddings, Images, Speech, NimbRoVision) to ROS2.</description>
+  <version>1.1.0</version>
+  <description>"Integration of various APIs (Chat Completions, Embeddings, Images, Speech, NimbRoVision) with ROS2."</description>
+  <author email="paetzold@ais.uni-bonn.de">Bastian Pätzold</author>
   <maintainer email="paetzold@ais.uni-bonn.de">Bastian Pätzold</maintainer>
   <license>BSD-3-Clause</license>
+  <depend>nimbro_utils</depend>
   <depend>nimbro_api_interfaces</depend>
   <export>
     <build_type>ament_python</build_type>

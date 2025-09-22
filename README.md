@@ -1,113 +1,135 @@
-# nimbro_api
 
-This package exposes various APIs ([Chat Completions](https://platform.openai.com/docs/api-reference/chat), [Embeddings](https://platform.openai.com/docs/api-reference/embeddings), [Audio](https://platform.openai.com/docs/api-reference/audio), [Images](https://platform.openai.com/docs/api-reference/images), [NimbRoVisionServers](https://github.com/AIS-Bonn/nimbro_vision_servers)) to ROS2.
+# NimbRo API
+
+Integration of various APIs with the [ROS2 Jazzy](https://docs.ros.org/en/jazzy/index.html) distribution.
 
 ## Features
 
-This package targets the ROS2 Humble and Jazzy [distributions](https://docs.ros.org/en/rolling/Releases.html), but should be compatible with others as well.
+- Supported API types: [Chat Completions](https://platform.openai.com/docs/api-reference/chat), [Embeddings](https://platform.openai.com/docs/api-reference/embeddings), [Speech](https://platform.openai.com/docs/api-reference/speech), [Images](https://platform.openai.com/docs/api-reference/images), [NimbRoVisionServers](https://github.com/AIS-Bonn/nimbro_vision_servers).
+- Supported API providers: [OpenAI](https://platform.openai.com/docs/api-reference/chat), [Mistral AI](https://docs.mistral.ai/api/#tag/chat), [OpenRouter](https://openrouter.ai/docs/api-reference/overview), and [vLLM](https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html?ref=blog.mozilla.ai), or any other provider behaving like one of them.
+- The integration of the [Chat Completions](https://platform.openai.com/docs/api-reference/chat) API supports: Reasoning, (parallel) tool calling, JSON mode, image/audio/file inputs, web search, streaming, model parameters, context editing, [custom parsers](./nimbro_api/misc/parsers/completion/completion_parser_template.py), error correction, robust timeout behavior, ...
+- Easy Python bindings in a central object ([ApiDirector](./nimbro_api/api_director.py)) attachable to your node.
+- A [Jupyter Notebook](./examples/tutorial.ipynb) with examples and descriptions of most features provided.
+- Tracking of token usage with [pricing](./nimbro_api/misc/pricing.json) estimation.
+- Caching of results to reduce latency and costs.
+- Lite [dependencies](./requirements.txt).
 
-It is completely Python based and requires [almost](https://github.com/AIS-Bonn/nimbro_api/blob/main/requirements.txt) no external dependencies.
+## Setup
 
-It supports several flavors of the (Chat Completions & Embeddings) APIs to enable enpoints from [OpenAI](https://platform.openai.com/docs/api-reference/chat), [Mistral AI](https://docs.mistral.ai/api/#tag/chat), [OpenRouter](https://openrouter.ai/docs/api-reference/overview) and [vLLM](https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html?ref=blog.mozilla.ai) and any other provider that behaves exactly like one of them.
+### ROS2
 
-The Chat Completions integration provides streamed and asynchronous prompting, tool usage, setting tool choice, JSON mode, vision input (web and local), setting model parameters, and message history editing. It also provides monitoring of token usage and cost, validity checks for all inputs and outputs (including JSON schema compliance when using tools), robust timeout behavior, as well as optional text normalization and various self-correction routines in case the model output deviates from what is expected.
+Include this repository together with [the repository containing all required interfaces](https://github.com/AIS-Bonn/nimbro_api_interfaces) and [NimbRo Utilities](https://github.com/AIS-Bonn/nimbro_utils) in the source folder of your colcon workspace. After building them:
+```bash
+colcon build --packages-select nimbro_utils nimbro_api_interfaces nimbro_api --symlink-install
+```
+and re-sourcing:
+```bash
+source install/local_setup.bash
+```
+several [launch files](./launch) and [nodes](./examples) will be available in your environment.
 
-## Installation
+### Python
 
-Simply include this repository together with [the repository containing all required interfaces](https://github.com/AIS-Bonn/nimbro_api_interfaces) in the source folder of your colcon workspace. After building them
+The only hard requirement of this package is the `requests` package:
+```bash
+pip install requests
+```
 
-`colcon build --packages-select nimbro_api nimbro_api_interfaces`
+To install this and all [optional](./requirements.txt) Python dependencies:
+```bash
+pip install -r requirements.txt
+```
 
-and re-sourcing
+### Docker
 
-`source install/local_setup.bash`
-
-several [launch files](https://github.com/AIS-Bonn/nimbro_api/tree/main/launch), [nodes](https://github.com/AIS-Bonn/nimbro_api/tree/main/nimbro_api/) and [demos](https://github.com/AIS-Bonn/nimbro_api/tree/main/nimbro_api/examples) will be available in your environment.
-
-Alternatively, you may also use the provided [devcontainer](https://github.com/AIS-Bonn/nimbro_api/tree/main/.devcontainer).
-
-## Usage
-
-For a step-by-step guide with detailed explanations and extensive examples on how to use this package, see the Jupyter Notebook [tutorial](https://github.com/AIS-Bonn/nimbro_api/blob/main/nimbro_api/examples/tutorial.ipynb).
-
+Alternatively, you may use the provided [devcontainer](./.devcontainer) or [Docker](./Docker) image:
+```bash
+TODO
+```
 
 ### Quick Start
 
-Set the API key of one of the predefined endpoints that you want to use (`OPENAI_API_KEY`, `MISTRAL_API_KEY`, `OPENROUTER_API_KEY`, `VLLM_API_KEY`)
+Set the API key you want to use (`OPENAI_API_KEY`, `MISTRAL_API_KEY`, `OPENROUTER_API_KEY`, `VLLM_API_KEY`, `AIS_API_KEY`, `NIMBRO_VISION_API_KEY`):
+```bash
+export OPENAI_API_KEY='MyKey123'
+```
 
-`export OPENAI_API_KEY='yourkey'`
+Launch the the main launch file:
+```bash
+ros2 launch nimbro_api launch.py
+```
 
-Launch the the main launch file
+Attach an [ApiDirector](./nimbro_api/api_director.py) to your ROS2 node:
+```python
+from nimbro_api import ApiDirector
+self.api_director = ApiDirector(self) # `self` is your Node object
+```
 
-`ros2 launch nimbro_api launch.py`
+Use it to get some embeddings:
+```python
+success, message, embeddings = self.api_director.get_embeddings(text=["cat", "robot"])
+```
 
-Instantiate an [ApiDirector](https://github.com/AIS-Bonn/nimbro_api/tree/main/nimbro_api/api_director.py) object in your Python node that exposes all package features as functions
-
-`from nimbro_api.api_director import ApiDirector`
-
-`self.api_director = ApiDirector(self)`
-
-Acquire a Completions node and prompt it
-
-`success, message, completions_id = self.api_director.acquire(reset_parameters=True, reset_context=True)`
-
-`success, message, text_response, tool_calls = self.api_director.prompt(completions_id=completions_id, text='Tell me a joke about PhD students.', response_type="text")`
-
-or get some text embeddings
-
-`success, message, embeddings = self.api_director.get_embeddings(text=["dog", "helicopter"])`
+Or retrieve a chat completion:
+```python
+success, message, completions_id = self.api_director.acquire()
+if success:
+    success, message, completion = self.api_director.prompt(
+          completions_id=completions_id,
+          text='Tell me a joke about robots!'
+      )
+```
 
 ## TODOs
 
-Here is a list of features that I would like to implement at some point:
-
-- [ ] Vision output for Completions
-- [ ] Audio input/output for Completions
-- [ ] Forward reasoning output
-- [ ] Structured outputs for Completions
-- [ ] Random seed for Completions
-- [ ] Web search options for Completions
-- [ ] Action client for streamed Completions
-- [ ] ApiDirector documentation
-- [ ] Allow overwriting context messages
+List of features that I would like to see implemented:
+- [ ] Action client for streamed Chat Completions
+- [ ] Context parsers for Chat Completions
+- [ ] Support Transcriptions API
+- [ ] Audio/Vision output for Chat Completions
+- [ ] Structured outputs beyond tools for Chat Completions
+- [ ] Random seed for Chat Completions
 
 ## Citation
 
-If you find this package useful in your work, please cite one of our papers (if in doubt, choose the first one):
+If you utilize this package in your research, please cite one of our relevant publications.
 
-https://arxiv.org/abs/2503.16538
-```bibtex
-@article{paetzold25detector,
-    author={Bastian P{\"a}tzold and Jan Nogga and Sven Behnke},
-    title={Leveraging Vision-Language Models for Open-Vocabulary Instance Segmentation and Tracking},
-    journal={arXiv preprint arXiv:2503.16538},
-    year={2025}
-}
-```
+* **Leveraging Vision-Language Models for Open-Vocabulary Instance Segmentation and Tracking**<br>
+    [[arXiv:2503.16538](https://arxiv.org/abs/2503.16538)]
+    ```bibtex
+    @article{paetzold25vlmgist,
+        author={Bastian P{\"a}tzold and Jan Nogga and Sven Behnke},
+        title={Leveraging Vision-Language Models for Open-Vocabulary Instance Segmentation and Tracking},
+        journal={IEEE Robotics and Automation Letters (RA-L)},
+        year={2025}
+    }
+    ```
 
-https://arxiv.org/abs/2410.22997
-```bibtex
-@article{bode24prompt,
-    author={Jonas Bode and Bastian P{\"a}tzold and Raphael Memmesheimer and Sven Behnke},
-    title={A Comparison of Prompt Engineering Techniques for Task Planning and Execution in Service Robotics},
-    journal={International Conference on Humanoid Robots (Humanoids)},
-    year={2024}
-}
-```
+* **A Comparison of Prompt Engineering Techniques for Task Planning and Execution in Service Robotics**<br>
+    [[arXiv:2410.22997](https://arxiv.org/abs/2410.22997)]
+    ```bibtex
+    @article{bode24prompt,
+        author={Jonas Bode and Bastian P{\"a}tzold and Raphael Memmesheimer and Sven Behnke},
+        title={A Comparison of Prompt Engineering Techniques for Task Planning and Execution in Service Robotics},
+        journal={International Conference on Humanoid Robots (Humanoids)},
+        year={2024}
+    }
+    ```
 
-https://arxiv.org/abs/2412.14989
-```bibtex
-@article{memmesheimer25robocup,
-    author={Raphael Memmesheimer and Jan Nogga and Bastian P{\"a}tzold and Evgenii Kruzhkov and Simon Bultmann and Michael Schreiber and Jonas Bode and Bertan Karacora and Juhui Park and Alena Savinykh and Sven Behnke},
-    title={{RoboCup@Home 2024 OPL Winner NimbRo}: Anthropomorphic Service Robots using Foundation Models for Perception and Planning},
-    journal={RoboCup 2024: RoboCup World Cup XXVII},
-    year={2025}
-}
-```
+* **RoboCup@Home 2024 OPL Winner NimbRo: Anthropomorphic Service Robots using Foundation Models for Perception and Planning**<br>
+    [[arXiv:2412.14989](https://arxiv.org/abs/2412.14989)]
+    ```bibtex
+    @article{memmesheimer25robocup,
+        author={Raphael Memmesheimer and Jan Nogga and Bastian P{\"a}tzold and Evgenii Kruzhkov and Simon Bultmann and Michael Schreiber and Jonas Bode and Bertan Karacora and Juhui Park and Alena Savinykh and Sven Behnke},
+        title={{RoboCup@Home 2024 OPL Winner NimbRo}: Anthropomorphic Service Robots using Foundation Models for Perception and Planning},
+        journal={RoboCup 2024: RoboCup World Cup XXVII},
+        year={2025}
+    }
+    ```
 
 ## License
 
-`nimbro_api` is licensed under BSD-3.
+`nimbro_api` is licensed under the BSD-3-Clause License.
 
 ## Author
 

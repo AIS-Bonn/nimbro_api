@@ -3,5 +3,6 @@ cache
 *.pyc
 *-checkpoint.ipynb
 *-checkpoint.txt
+*-checkpoint.py
 debug.ipynb
 .vscode/*

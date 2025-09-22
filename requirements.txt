@@ -1,5 +1,6 @@
-requests   # (required) used for all API interactions
-jsonschema # (optional) allows completions node to validate tool calls against tool definitions
-unidecode  # (optional) improves unicode removal/replacement when normalizing comletions
-tiktoken   # (optional) allows embeddings node to count tokens for monitoring usage/pricing
-orjson     # (optional) speeds up json file handling
+requests   # Tested with 2.32.4 # Required for all API interactions.
+orjson     # Tested with 3.11.0 # If available, used to speed up JSON-files interactions.
+pybase64   # Tested with 1.4.1  # If available, used to speed up Base64 encoding and decoding.
+unidecode  # Tested with 1.3.8  # If available, used for normalizing Unicode in Chat Completions.
+jsonschema # Tested with 4.23.0 # If available, used to validate tool calls against tool definitions.
+tiktoken   # Tested with 0.8.0  # If available, used for counting token usage by the Embeddings node.

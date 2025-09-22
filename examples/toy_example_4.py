@@ -286,41 +286,39 @@ class ToyExample(Node):
 
         while True:
             try:
-                text_response # noqa
+                completion # noqa
             except UnboundLocalError:
                 self.update_tools(include_non_valid_functions=True)
 
-                text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=model_system_prompt, role="system", reset_context=True, response_type="none", retry=True)[2:]
-                text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text="Task: " + self.task, role="user", reset_context=False, response_type="none", retry=True)[2:]
-                text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text="Here is additional information useful for solving the task:", role="user", reset_context=False, response_type="none", retry=True)[2:]
-                text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text="Known locations: " + str(self.locations), role="user", reset_context=False, response_type="none", retry=True)[2:]
-                text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text="The robots current location is '" + str(self.locations[self.current_location]) + "'.", role="user", reset_context=False, response_type="none", retry=True)[2:]
-                text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text="Known persons and their locations: " + str(person_info), role="user", reset_context=False, response_type="none", retry=True)[2:]
+                completion = self.api_director.prompt(completions_id=self.completions_id, text=model_system_prompt, role="system", reset_context=True, response_type="none", retry=True)[2]
+                completion = self.api_director.prompt(completions_id=self.completions_id, text="Task: " + self.task, role="user", reset_context=False, response_type="none", retry=True)[2]
+                completion = self.api_director.prompt(completions_id=self.completions_id, text="Here is additional information useful for solving the task:", role="user", reset_context=False, response_type="none", retry=True)[2]
+                completion = self.api_director.prompt(completions_id=self.completions_id, text="Known locations: " + str(self.locations), role="user", reset_context=False, response_type="none", retry=True)[2]
+                completion = self.api_director.prompt(completions_id=self.completions_id, text="The robots current location is '" + str(self.locations[self.current_location]) + "'.", role="user", reset_context=False, response_type="none", retry=True)[2]
+                completion = self.api_director.prompt(completions_id=self.completions_id, text="Known persons and their locations: " + str(person_info), role="user", reset_context=False, response_type="none", retry=True)[2]
                 if not (chain_of_thought or in_between_reasoning):
                     self.update_tools()
-                text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text="Known objects and their locations: " + str(object_info), role="user", reset_context=False, response_type="none" if chain_of_thought or in_between_reasoning else "always", retry=True)[2:]
+                completion = self.api_director.prompt(completions_id=self.completions_id, text="Known objects and their locations: " + str(object_info), role="user", reset_context=False, response_type="none" if chain_of_thought or in_between_reasoning else "always", retry=True)[2]
                 if chain_of_thought:
-                    text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=chain_of_thought_texts[0], role="user", reset_context=False, response_type="text", retry=True)[2:]
+                    completion = self.api_director.prompt(completions_id=self.completions_id, text=chain_of_thought_texts[0], role="user", reset_context=False, response_type="text", retry=True)[2]
                     if in_between_reasoning:
-                        text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[0], role="user", reset_context=False, response_type="text", retry=True)[2:]
+                        completion = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[0], role="user", reset_context=False, response_type="text", retry=True)[2]
                         self.update_tools()
-                        text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[1], role="user", reset_context=False, response_type="always", retry=True)[2:]
+                        completion = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[1], role="user", reset_context=False, response_type="always", retry=True)[2]
                     else:
-                        text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=chain_of_thought_texts[1], role="user", reset_context=False, response_type="always", retry=True)[2:]
+                        completion = self.api_director.prompt(completions_id=self.completions_id, text=chain_of_thought_texts[1], role="user", reset_context=False, response_type="always", retry=True)[2]
                 elif in_between_reasoning:
-                    text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[0], role="user", reset_context=False, response_type="text", retry=True)[2:]
+                    completion = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[0], role="user", reset_context=False, response_type="text", retry=True)[2]
                     self.update_tools()
-                    text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[1], role="user", reset_context=False, response_type="always", retry=True)[2:]
+                    completion = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[1], role="user", reset_context=False, response_type="always", retry=True)[2]
             finally:
-                if len(tool_calls) == 1:
-                    tool = tool_calls[0]
+                num_tool_calls = len(completion.get('tools', []))
+                if num_tool_calls:
+                    tool = completion['tools'][0]
                 else:
-                    log = "Model responded with '" + str(len(tool_calls)) + "' tool calls"
+                    log = f"Model responded with '{num_tool_calls}' tool calls"
                     self.get_logger().error(log)
-                    if text_response == "":
-                        stop_reason = log
-                    else:
-                        stop_reason = text_response
+                    stop_reason = completion.get('text', log)
                     break
             iterations += 1
 
@@ -340,14 +338,14 @@ class ToyExample(Node):
                 response = "Function '" + tool["name"] + "' does not exist"
 
             if success:
-                text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=response, role="tool", reset_context=False, tool_response_id=tool["id"], response_type="none" if in_between_reasoning else "always", retry=True)[2:]
+                completion = self.api_director.prompt(completions_id=self.completions_id, text=response, role="tool", reset_context=False, tool_response_id=tool["id"], response_type="none" if in_between_reasoning else "always", retry=True)[2]
             else:
                 stop_reason = response
                 break
 
             if in_between_reasoning:
-                text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[0], role="user", reset_context=False, response_type="text", retry=True)[2:]
-                text_response, tool_calls = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[1], role="user", reset_context=False, response_type="always", retry=True)[2:]
+                completion = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[0], role="user", reset_context=False, response_type="text", retry=True)[2]
+                completion = self.api_director.prompt(completions_id=self.completions_id, text=in_between_reasoning_texts[1], role="user", reset_context=False, response_type="always", retry=True)[2]
 
         ### evaluate
 

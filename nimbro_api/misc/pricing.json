@@ -2,27 +2,27 @@
     "gpt-5": {
         "tokens_input_uncached": 1.25,
         "tokens_input_cached": 0.125,
-        "tokens_output": 10.0
+        "tokens_output": 10.00
     },
     "gpt-5-2025-08-07": {
         "tokens_input_uncached": 1.25,
         "tokens_input_cached": 0.125,
-        "tokens_output": 10.0
+        "tokens_output": 10.00
     },
     "gpt-5-chat-latest": {
         "tokens_input_uncached": 1.25,
         "tokens_input_cached": 0.125,
-        "tokens_output": 10.0
+        "tokens_output": 10.00
     },
     "gpt-5-mini": {
         "tokens_input_uncached": 0.25,
         "tokens_input_cached": 0.025,
-        "tokens_output": 2.0
+        "tokens_output": 2.00
     },
     "gpt-5-mini-2025-08-07": {
         "tokens_input_uncached": 0.25,
         "tokens_input_cached": 0.025,
-        "tokens_output": 2.0
+        "tokens_output": 2.00
     },
     "gpt-5-nano": {
         "tokens_input_uncached": 0.05,
@@ -45,7 +45,7 @@
         "tokens_output": 4.40
     },
     "o3": {
-        "tokens_input_uncached": 2.50,
+        "tokens_input_uncached": 2.00,
         "tokens_input_cached": 0.50,
         "tokens_output": 8.00
     },
@@ -65,59 +65,59 @@
         "tokens_output": 4.40
     },
     "gpt-4.1": {
-        "tokens_input_uncached": 2.0,
-        "tokens_input_cached": 0.5,
-        "tokens_output": 8.0
+        "tokens_input_uncached": 2.00,
+        "tokens_input_cached": 0.50,
+        "tokens_output": 8.00
     },
     "gpt-4.1-2025-04-14": {
-        "tokens_input_uncached": 2.0,
-        "tokens_input_cached": 0.5,
-        "tokens_output": 8.0
+        "tokens_input_uncached": 2.00,
+        "tokens_input_cached": 0.50,
+        "tokens_output": 8.00
     },
     "gpt-4.1-mini": {
         "tokens_input_uncached": 0.40,
-        "tokens_input_cached": 0.1,
-        "tokens_output": 1.6
+        "tokens_input_cached": 0.10,
+        "tokens_output": 1.60
     },
     "gpt-4.1-mini-2025-04-14": {
         "tokens_input_uncached": 0.40,
-        "tokens_input_cached": 0.1,
-        "tokens_output": 1.6
+        "tokens_input_cached": 0.10,
+        "tokens_output": 1.60
     },
     "gpt-4.1-nano": {
         "tokens_input_uncached": 0.10,
         "tokens_input_cached": 0.025,
-        "tokens_output": 0.4
+        "tokens_output": 0.40
     },
     "gpt-4.1-nano-2025-04-14": {
         "tokens_input_uncached": 0.10,
         "tokens_input_cached": 0.025,
-        "tokens_output": 0.4
+        "tokens_output": 0.40
     },
     "gpt-4o": {
-        "tokens_input_uncached": 2.5,
+        "tokens_input_uncached": 2.50,
         "tokens_input_cached": 1.25,
-        "tokens_output": 10.0
+        "tokens_output": 10.00
     },
     "gpt-4o-2024-08-06": {
-        "tokens_input_uncached": 2.5,
+        "tokens_input_uncached": 2.50,
         "tokens_input_cached": 1.25,
-        "tokens_output": 10.0
+        "tokens_output": 10.00
     },
     "gpt-4o-2024-11-20": {
-        "tokens_input_uncached": 2.5,
+        "tokens_input_uncached": 2.50,
         "tokens_input_cached": 1.25,
-        "tokens_output": 10.0
+        "tokens_output": 10.00
     },
     "gpt-4o-mini": {
         "tokens_input_uncached": 0.15,
         "tokens_input_cached": 0.075,
-        "tokens_output": 0.6
+        "tokens_output": 0.60
     },
     "gpt-4o-mini-2024-07-18": {
         "tokens_input_uncached": 0.15,
         "tokens_input_cached": 0.075,
-        "tokens_output": 0.6
+        "tokens_output": 0.60
     },
     "text-embedding-3-large": {
         "tokens_input_uncached": 0.13
@@ -128,37 +128,43 @@
 
     "google/gemini-2.5-pro": {
         "tokens_input_uncached": 1.25,
-        "tokens_output": 10.0
+        "tokens_input_cached": 0.31,
+        "tokens_output": 10.00
     },
     "google/gemini-2.5-flash": {
         "tokens_input_uncached": 0.30,
+        "tokens_input_cached": 0.075,
         "tokens_output": 2.50
     },
     "google/gemini-2.5-flash-lite": {
         "tokens_input_uncached": 0.10,
+        "tokens_input_cached": 0.025,
         "tokens_output": 0.40
     },
     "google/gemini-2.0-flash-001": {
-        "tokens_input_uncached": 0.1,
-        "tokens_output": 0.4
+        "tokens_input_uncached": 0.10,
+        "tokens_input_cached": 0.025,
+        "tokens_output": 0.40
     },
     "google/gemini-2.0-flash-lite-001": {
         "tokens_input_uncached": 0.075,
-        "tokens_output": 0.3
+        "tokens_output": 0.30
     },
     "google/gemini-pro-1.5": {
         "tokens_input_uncached": 1.25,
-        "tokens_output": 5.0
+        "tokens_input_cached": 0.3125,
+        "tokens_output": 5.00
     },
     "google/gemini-flash-1.5": {
         "tokens_input_uncached": 0.075,
-        "tokens_output": 0.3
+        "tokens_input_cached": 0.01875,
+        "tokens_output": 0.30
     },
     "google/gemini-flash-1.5-8b": {
-        "tokens_input_uncached": 0.038,
+        "tokens_input_uncached": 0.0375,
+        "tokens_input_cached": 0.01,
         "tokens_output": 0.15
     },
-
     "google/gemma-3-27b-it": {
         "tokens_input_uncached": 0.067,
         "tokens_output": 0.267
@@ -173,58 +179,124 @@
     },
 
     "anthropic/claude-opus-4.1": {
-        "tokens_input_uncached": 15.0,
-        "tokens_output": 75.0
+        "tokens_input_uncached": 15.00,
+        "tokens_output": 75.00
     },
     "anthropic/claude-opus-4": {
-        "tokens_input_uncached": 15.0,
-        "tokens_output": 75.0
+        "tokens_input_uncached": 15.00,
+        "tokens_output": 75.00
     },
     "anthropic/claude-sonnet-4": {
-        "tokens_input_uncached": 3.0,
-        "tokens_output": 15.0
+        "tokens_input_uncached": 3.00,
+        "tokens_output": 15.00
     },
     "anthropic/claude-3.7-sonnet": {
-        "tokens_input_uncached": 3.0,
-        "tokens_output": 15.0
+        "tokens_input_uncached": 3.00,
+        "tokens_output": 15.00
     },
     "anthropic/claude-3.7-sonnet:thinking": {
-        "tokens_input_uncached": 3.0,
-        "tokens_output": 15.0
+        "tokens_input_uncached": 3.00,
+        "tokens_output": 15.00
     },
     "anthropic/claude-3.5-sonnet": {
-        "tokens_input_uncached": 3.0,
-        "tokens_output": 15.0
+        "tokens_input_uncached": 3.00,
+        "tokens_output": 15.00
     },
     "anthropic/claude-3.5-haiku": {
         "tokens_input_uncached": 0.80,
         "tokens_output": 4.00
     },
     "anthropic/claude-3-opus": {
-        "tokens_input_uncached": 15.0,
-        "tokens_output": 75.0
+        "tokens_input_uncached": 15.00,
+        "tokens_output": 75.00
     },
     "anthropic/claude-3-sonnet": {
-        "tokens_input_uncached": 3.0,
-        "tokens_output": 15.0
+        "tokens_input_uncached": 3.00,
+        "tokens_output": 15.00
     },
     "anthropic/claude-3-sonnet:beta": {
-        "tokens_input_uncached": 3.0,
-        "tokens_output": 15.0
+        "tokens_input_uncached": 3.00,
+        "tokens_output": 15.00
     },
     "anthropic/claude-3-haiku": {
         "tokens_input_uncached": 0.25,
         "tokens_output": 1.25
     },
 
-    "openai/gpt-oss-120b": {
-        "tokens_input_uncached": 0.073,
-        "tokens_output": 0.29
+    "openai/gpt-5": {
+        "tokens_input_uncached": 1.25,
+        "tokens_input_cached": 0.125,
+        "tokens_output": 10.00
+    },
+    "openai/gpt-5-chat": {
+        "tokens_input_uncached": 1.25,
+        "tokens_input_cached": 0.125,
+        "tokens_output": 10.00
+    },
+    "openai/gpt-5-mini": {
+        "tokens_input_uncached": 0.25,
+        "tokens_input_cached": 0.025,
+        "tokens_output": 2.00
+    },
+    "openai/gpt-5-nano": {
+        "tokens_input_uncached": 0.05,
+        "tokens_input_cached": 0.005,
+        "tokens_output": 0.40
+    },
+    "openai/o4-mini": {
+        "tokens_input_uncached": 1.10,
+        "tokens_input_cached": 0.275,
+        "tokens_output": 4.40
+    },
+    "openai/o3": {
+        "tokens_input_uncached": 2.00,
+        "tokens_input_cached": 0.50,
+        "tokens_output": 8.00
+    },
+    "openai/o3-mini": {
+        "tokens_input_uncached": 1.10,
+        "tokens_input_cached": 0.55,
+        "tokens_output": 4.40
+    },
+    "openai/gpt-4.1": {
+        "tokens_input_uncached": 2.00,
+        "tokens_input_cached": 0.50,
+        "tokens_output": 8.00
+    },
+    "openai/gpt-4.1-mini": {
+        "tokens_input_uncached": 0.40,
+        "tokens_input_cached": 0.10,
+        "tokens_output": 1.60
+    },
+    "openai/gpt-4.1-nano": {
+        "tokens_input_uncached": 0.10,
+        "tokens_input_cached": 0.025,
+        "tokens_output": 0.40
+    },
+    "openai/gpt-4o-2024-11-20": {
+        "tokens_input_uncached": 2.50,
+        "tokens_input_cached": 1.25,
+        "tokens_output": 10.00
+    },
+    "openai/gpt-4o-audio-preview": {
+        "tokens_input_uncached": 2.50,
+        "tokens_input_cached": 1.25,
+        "tokens_output": 40.00
+    },
+    "openai/gpt-4o-mini-2024-07-18": {
+        "tokens_input_uncached": 0.15,
+        "tokens_input_cached": 0.075,
+        "tokens_output": 0.60
     },
     "openai/gpt-oss-120b": {
-        "tokens_input_uncached": 0.04,
-        "tokens_output": 0.16
+        "tokens_input_uncached": 0.05,
+        "tokens_output": 0.25
     },
+    "openai/gpt-oss-20b": {
+        "tokens_input_uncached": 0.03,
+        "tokens_output": 0.15
+    },
+
 
     "meta-llama/llama-4-maverick": {
         "tokens_input_uncached": 0.15,
@@ -240,20 +312,28 @@
     },
 
     "x-ai/grok-4": {
-        "tokens_input_uncached": 3.0,
-        "tokens_output": 15.0
+        "tokens_input_uncached": 3.00,
+        "tokens_input_cached": 0.75,
+        "tokens_output": 15.00
+    },
+    "x-ai/grok-code-fast-1": {
+        "tokens_input_uncached": 0.20,
+        "tokens_input_cached": 0.02,
+        "tokens_output": 1.50
     },
     "x-ai/grok-3": {
-        "tokens_input_uncached": 3.0,
-        "tokens_output": 15.0
+        "tokens_input_uncached": 3.00,
+        "tokens_input_cached": 0.75,
+        "tokens_output": 15.00
     },
     "x-ai/grok-3-mini": {
-        "tokens_input_uncached": 0.3,
-        "tokens_output": 0.5
+        "tokens_input_uncached": 0.30,
+        "tokens_input_cached": 0.075,
+        "tokens_output": 0.50
     },
     "x-ai/grok-2-vision-1212": {
-        "tokens_input_uncached": 2.0,
-        "tokens_output": 10.0
+        "tokens_input_uncached": 2.00,
+        "tokens_output": 10.00
     },
 
     "qwen/qwen3-coder": {
@@ -295,16 +375,23 @@
 
     "z-ai/glm-4.5v": {
         "tokens_input_uncached": 0.50,
+        "tokens_input_cached": 0.10,
         "tokens_output": 1.80
     },
-
-    "mistralai/mistral-small-3.2-24b-instruct": {
-        "tokens_input_uncached": 0.02,
-        "tokens_output": 0.08
+    "z-ai/glm-4.5": {
+        "tokens_input_uncached": 0.41,
+        "tokens_input_cached": 0.082,
+        "tokens_output": 1.65
     },
-    "mistralai/mistral-small-3.1-24b-instruct": {
-        "tokens_input_uncached": 0.018,
-        "tokens_output": 0.072
+    "z-ai/glm-4.5-air": {
+        "tokens_input_uncached": 0.14,
+        "tokens_input_cached": 0.028,
+        "tokens_output": 0.86
+    },
+
+    "mistralai/mistral-large-2411": {
+        "tokens_input_uncached": 2.00,
+        "tokens_output": 6.00
     },
     "mistralai/mistral-medium-3.1": {
         "tokens_input_uncached": 0.40,
@@ -314,9 +401,25 @@
         "tokens_input_uncached": 0.40,
         "tokens_output": 2.00
     },
-    "mistralai/pixtral-large-2411": {
-        "tokens_input_uncached": 2.00,
-        "tokens_output": 6.00
+    "mistralai/mistral-small-3.2-24b-instruct": {
+        "tokens_input_uncached": 0.075,
+        "tokens_output": 0.20
+    },
+    "mistralai/magistral-small-2506": {
+        "tokens_input_uncached": 0.50,
+        "tokens_output": 1.50
+    },
+    "mistralai/devstral-medium": {
+        "tokens_input_uncached": 0.40,
+        "tokens_output": 2.00
+    },
+    "mistralai/devstral-small": {
+        "tokens_input_uncached": 0.07,
+        "tokens_output": 0.28
+    },
+    "mistralai/codestral-2508": {
+        "tokens_input_uncached": 0.30,
+        "tokens_output": 0.90
     },
     "mistralai/pixtral-12b": {
         "tokens_input_uncached": 0.10,
@@ -327,17 +430,33 @@
         "tokens_input_uncached": 2.00,
         "tokens_output": 6.00
     },
+    "mistral-medium-latest": {
+        "tokens_input_uncached": 0.40,
+        "tokens_output": 2.00
+    },
     "mistral-medium-2508": {
         "tokens_input_uncached": 0.40,
         "tokens_output": 2.00
+    },
+    "mistral-small-latest": {
+        "tokens_input_uncached": 0.10,
+        "tokens_output": 0.30
     },
     "mistral-small-2506": {
         "tokens_input_uncached": 0.10,
         "tokens_output": 0.30
     },
+    "magistral-medium-latest": {
+        "tokens_input_uncached": 2.00,
+        "tokens_output": 5.00
+    },
     "magistral-medium-2507": {
         "tokens_input_uncached": 2.00,
         "tokens_output": 5.00
+    },
+    "magistral-small-latest": {
+        "tokens_input_uncached": 0.50,
+        "tokens_output": 1.50
     },
     "magistral-small-2507": {
         "tokens_input_uncached": 0.50,
@@ -367,9 +486,29 @@
         "tokens_input_uncached": 0.04,
         "tokens_output": 0.04
     },
+    "codestral-latest": {
+        "tokens_input_uncached": 0.30,
+        "tokens_output": 0.90
+    },
     "codestral-2508": {
-        "tokens_input_uncached": 0.3,
-        "tokens_output": 0.9
+        "tokens_input_uncached": 0.30,
+        "tokens_output": 0.90
+    },
+    "voxtral-small-latest": {
+        "tokens_input_uncached": 0.10,
+        "tokens_output": 0.30
+    },
+    "voxtral-small-2507": {
+        "tokens_input_uncached": 0.10,
+        "tokens_output": 0.30
+    },
+    "voxtral-mini-latest": {
+        "tokens_input_uncached": 0.04,
+        "tokens_output": 0.04
+    },
+    "voxtral-mini-2507": {
+        "tokens_input_uncached": 0.04,
+        "tokens_output": 0.04
     },
     "codestral-embed-2505": {
         "tokens_input_uncached": 0.15
