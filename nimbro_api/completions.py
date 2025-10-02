@@ -19,14 +19,13 @@ except ImportError:
 import rclpy
 from rclpy.node import Node
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
-from ament_index_python.packages import get_package_prefix
 from diagnostic_msgs.msg import DiagnosticStatus, KeyValue
 from std_msgs.msg import String
 
 from nimbro_api_interfaces.srv import CompletionsPrompt, CompletionsInterrupt, CompletionsToolsGet, CompletionsToolsSet, CompletionsContextGet, CompletionsContextSet, TriggerFeedback
 from nimbro_api.misc.common import validate_default_endpopints, filter_api_endpoint, validate_api_endpoint, retrieve_api_key, probe_models_api, validate_connection, CustomException
 
-from nimbro_utils.lazy import start_and_spin_node, ParameterHandler, Logger, normalize_string, remove_whitespace, is_base64, is_url, extract_json, read_as_b64, convert_stamp, log_lines, escape
+from nimbro_utils.lazy import start_and_spin_node, ParameterHandler, Logger, normalize_string, remove_whitespace, is_base64, is_url, extract_json, read_as_b64, convert_stamp, log_lines, escape, get_package_path
 
 ### <Parameter Defaults>
 
@@ -50,7 +49,7 @@ model_reasoning_effort = "none"
 
 completion_parsers = [""]
 completion_parsers_timeout = 5.0 # seconds
-completion_parsers_folder = os.path.join(get_package_prefix("nimbro_api").replace("install", "src"), "nimbro_api", "misc", "parsers", "completion")
+completion_parsers_folder = os.path.join(get_package_path("nimbro_api"), "nimbro_api", "misc", "parsers", "completion")
 
 stream_completion = True
 normalize_text_completion = False
@@ -1058,12 +1057,23 @@ class Completions(Node):
                             usage = self.save_usage(request, chunk, stamp_start_iso)
 
                     elif chunk['code'] == "ALL_CHUNKS_RECEIVED":
+                        if reasoning == "" and text == "" and len(tool_calls) == 0:
+                            logs.append("Completion finished before receiving any content.")
+                            self._logger.warn(logs[-1])
+                            break
+
                         is_complete = True
 
                         if usage is None:
                             usage = self.save_usage(request, None, stamp_start_iso)
                             logs.append("Received completion without usage information.")
                             self._logger.warn(logs[-1])
+
+                        # move reasoning to text when completion contains reasoning only
+                        if reasoning != "" and len(tool_calls) == 0 and text == "":
+                            self._logger.warn("Completion contains nothing but reasoning. Interpreting reasoning content as text completion.")
+                            text = reasoning
+                            reasoning = ""
 
                         # extract tool calls from text
                         if len(tool_calls) == 0 and request.response_type not in ["text", "auto", "json"]:
@@ -1078,8 +1088,8 @@ class Completions(Node):
                                 dict_extracted = extract_json(text)
                                 if dict_extracted is not None:
                                     logs.append(f"Extracted JSON from text completion: '{text}'")
-                                    self._logger.warn(logs[-1])
-                                    text = json.dumps(dict_extracted)
+                                    log_lines(logs[-1], line_length=self.parameters.log_line_length, line_highlight="| ", block_format=False, logger=self._logger, severity=30)
+                                    text = json.dumps(dict_extracted, indent=2)
 
                         # extract tool call arguments
                         for i in range(len(tool_calls)):
@@ -1089,8 +1099,8 @@ class Completions(Node):
                                 parameters = extract_json(tool_calls[i]['arguments'])
                                 if parameters is not None:
                                     logs.append(f"Extracted JSON from invalid tool call arguments: '{tool_calls[i]['arguments']}'")
-                                    self._logger.warn(logs[-1])
-                                    tool_calls[i]['arguments'] = json.dumps(parameters)
+                                    log_lines(logs[-1], line_length=self.parameters.log_line_length, line_highlight="| ", block_format=False, logger=self._logger, severity=30)
+                                    tool_calls[i]['arguments'] = json.dumps(parameters, indent=2)
 
                         logs = self.add_completion_to_context(reasoning, text, tool_calls, logs)
                         break
@@ -1455,139 +1465,143 @@ class Completions(Node):
             early_stop = False
             usage = None
 
-            for chunk in completion.iter_content(chunk_size=1):
-                # self._logger.debug(f"chunk: {chunk}")
-                if early_stop is True:
-                    break
-                decoded = False
+            try:
+                for chunk in completion.iter_content(chunk_size=1):
+                    # self._logger.debug(f"chunk: {chunk}")
+                    if early_stop is True:
+                        break
+                    decoded = False
 
-                # check if response was canceled from external source
-                if self.pipe[1].poll():
-                    code = self.pipe[1].recv()
-                    if code == "EXTERNAL":
-                        message = "Completion was interrupted due to request from external source."
-                        self._logger.debug(message)
-                        self.pipe[1].send({'code': "INTERRUPT", 'content': message})
-                    else:
-                        self._logger.debug("Completion was interrupted due to request from internal source")
-                    break
+                    # check if response was canceled from external source
+                    if self.pipe[1].poll():
+                        code = self.pipe[1].recv()
+                        if code == "EXTERNAL":
+                            message = "Completion was interrupted due to request from external source."
+                            self._logger.debug(message)
+                            self.pipe[1].send({'code': "INTERRUPT", 'content': message})
+                        else:
+                            self._logger.debug("Completion was interrupted due to request from internal source")
+                        break
 
-                # attempt to decode chunk
-                if chunk:
-                    if len(undecoded_buffer) > 0:
-                        try:
-                            decoded_chunk = (undecoded_buffer + chunk).decode('utf-8')
-                        except UnicodeDecodeError:
+                    # attempt to decode chunk
+                    if chunk:
+                        if len(undecoded_buffer) > 0:
+                            try:
+                                decoded_chunk = (undecoded_buffer + chunk).decode('utf-8')
+                            except UnicodeDecodeError:
+                                try:
+                                    decoded_chunk = chunk.decode('utf-8')
+                                except UnicodeDecodeError:
+                                    undecoded_buffer += chunk
+                                else:
+                                    decoded = True
+                                    self._logger.warn(f"Ignoring byte sequence '{undecoded_buffer}' after failure to decode it")
+                                    undecoded_buffer = b""
+                            else:
+                                decoded = True
+                                undecoded_buffer = b""
+                        else:
                             try:
                                 decoded_chunk = chunk.decode('utf-8')
                             except UnicodeDecodeError:
                                 undecoded_buffer += chunk
                             else:
                                 decoded = True
-                                self._logger.warn(f"Ignoring byte sequence '{undecoded_buffer}' after failure to decode it")
-                                undecoded_buffer = b""
-                        else:
-                            decoded = True
-                            undecoded_buffer = b""
-                    else:
-                        try:
-                            decoded_chunk = chunk.decode('utf-8')
-                        except UnicodeDecodeError:
-                            undecoded_buffer += chunk
-                        else:
-                            decoded = True
 
-                # process all decoded lines
-                if decoded:
-                    decoded_buffer += decoded_chunk
-                    # self._logger.debug(f"{"\n" in decoded_buffer}: decoded_buffer: {decoded_buffer.replace("\n", "\\n")}")
-                    while '\n' in decoded_buffer:
-                        line, decoded_buffer = decoded_buffer.split('\n', 1)
-                        # self._logger.debug(f"line: {line}")
-                        if line != "":
-                            if line.find('data:') == 0:
+                    # process all decoded lines
+                    if decoded:
+                        decoded_buffer += decoded_chunk
+                        # self._logger.debug(f"{"\n" in decoded_buffer}: decoded_buffer: {decoded_buffer.replace("\n", "\\n")}")
+                        while '\n' in decoded_buffer:
+                            line, decoded_buffer = decoded_buffer.split('\n', 1)
+                            # self._logger.debug(f"line: {line}")
+                            if line != "":
+                                if line.find('data:') == 0:
 
-                                # end of response
-                                if line == 'data: [DONE]':
-                                    # forward usage before end of process
-                                    if self.api_endpoints[self.parameters.api_endpoint]['api_flavor'] in ["vllm", "openrouter"]:
-                                        if usage is None:
-                                            self._logger.warn("Did not receive usage before [DONE] message")
-                                        else:
-                                            self.pipe[1].send({'code': "USAGE", 'content': usage})
-                                    self._logger.debug("Received [DONE] message")
-                                    self.pipe[1].send({'code': "ALL_CHUNKS_RECEIVED", 'content': ''})
-                                else:
-                                    try:
-                                        json_data = json.loads(line[6:])
-                                    except Exception as e:
-                                        self._logger.warn(f"Ignoring line '{line}' after failure to parse it as JSON: {repr(e)}")
+                                    # end of response
+                                    if line == 'data: [DONE]':
+                                        # forward usage before end of process
+                                        if self.api_endpoints[self.parameters.api_endpoint]['api_flavor'] in ["vllm", "openrouter"]:
+                                            if usage is None:
+                                                self._logger.warn("Did not receive usage before [DONE] message")
+                                            else:
+                                                self.pipe[1].send({'code': "USAGE", 'content': usage})
+                                        self._logger.debug("Received [DONE] message")
+                                        self.pipe[1].send({'code': "ALL_CHUNKS_RECEIVED", 'content': ''})
                                     else:
-                                        # unexpected finish reason
-                                        if json_data.get('finish_reason') not in [None, "stop", "tool_calls", "STOP", "end_turn"]:
-                                            # forward usage before end of process
-                                            if self.api_endpoints[self.parameters.api_endpoint]['api_flavor'] in ["vllm", "openrouter"]:
-                                                if usage is None:
-                                                    self._logger.warn("Did not receive usage before [ERROR] message")
-                                                else:
-                                                    self.pipe[1].send({'code': "USAGE", 'content': usage})
-                                            message = f"Error while receiving completion: Unexpected finish reason '{json_data.get('finish_reason')}'."
-                                            self.pipe[1].send({'code': "ERROR", 'content': message})
-                                            early_stop = True
-                                            break
+                                        try:
+                                            json_data = json.loads(line[6:])
+                                        except Exception as e:
+                                            self._logger.warn(f"Ignoring line '{line}' after failure to parse it as JSON: {repr(e)}")
                                         else:
-                                            # extract usage
-                                            if json_data.get('usage') is not None:
+                                            # unexpected finish reason
+                                            if json_data.get('finish_reason') not in [None, "stop", "tool_calls", "STOP", "end_turn"]:
+                                                # forward usage before end of process
                                                 if self.api_endpoints[self.parameters.api_endpoint]['api_flavor'] in ["vllm", "openrouter"]:
-                                                    usage = json_data['usage']
-                                                else:
-                                                    self.pipe[1].send({'code': "USAGE", 'content': json_data['usage']})
-
-                                            # extract choices
-                                            if len(json_data.get('choices', [])) > 0:
-                                                try:
-                                                    json_choice = json_data['choices'][0]
-                                                except Exception as e:
-                                                    self._logger.warn(f"Ignoring data '{json_data}' after failure to parse choice as JSON: {repr(e)}")
-                                                else:
-                                                    # unexpected finish reason
-                                                    if json_choice.get('finish_reason') not in [None, "stop", "tool_calls", "STOP", "end_turn"]:
-                                                        # forward usage before end of process
-                                                        if self.api_endpoints[self.parameters.api_endpoint]['api_flavor'] in ["vllm", "openrouter"]:
-                                                            if usage is None:
-                                                                self._logger.warn("Did not receive usage before [ERROR] message")
-                                                            else:
-                                                                self.pipe[1].send({'code': "USAGE", 'content': usage})
-                                                        message = f"Error while receiving completion: Unexpected finish reason '{json_choice.get('finish_reason')}'."
-                                                        self.pipe[1].send({'code': "ERROR", 'content': message})
-                                                        early_stop = True
-                                                        break
+                                                    if usage is None:
+                                                        self._logger.warn("Did not receive usage before [ERROR] message")
                                                     else:
-                                                        # forward delta
-                                                        self.pipe[1].send({'code': "COMPLETION", 'content': json_choice['delta']})
-                            else:
-                                error += line
+                                                        self.pipe[1].send({'code': "USAGE", 'content': usage})
+                                                message = f"Error while receiving completion: Unexpected finish reason '{json_data.get('finish_reason')}'."
+                                                self.pipe[1].send({'code': "ERROR", 'content': message})
+                                                early_stop = True
+                                                break
+                                            else:
+                                                # extract usage
+                                                if json_data.get('usage') is not None:
+                                                    if self.api_endpoints[self.parameters.api_endpoint]['api_flavor'] in ["vllm", "openrouter"]:
+                                                        usage = json_data['usage']
+                                                    else:
+                                                        self.pipe[1].send({'code': "USAGE", 'content': json_data['usage']})
+
+                                                # extract choices
+                                                if len(json_data.get('choices', [])) > 0:
+                                                    try:
+                                                        json_choice = json_data['choices'][0]
+                                                    except Exception as e:
+                                                        self._logger.warn(f"Ignoring data '{json_data}' after failure to parse choice as JSON: {repr(e)}")
+                                                    else:
+                                                        # unexpected finish reason
+                                                        if json_choice.get('finish_reason') not in [None, "stop", "tool_calls", "STOP", "end_turn"]:
+                                                            # forward usage before end of process
+                                                            if self.api_endpoints[self.parameters.api_endpoint]['api_flavor'] in ["vllm", "openrouter"]:
+                                                                if usage is None:
+                                                                    self._logger.warn("Did not receive usage before [ERROR] message")
+                                                                else:
+                                                                    self.pipe[1].send({'code': "USAGE", 'content': usage})
+                                                            message = f"Error while receiving completion: Unexpected finish reason '{json_choice.get('finish_reason')}'."
+                                                            self.pipe[1].send({'code': "ERROR", 'content': message})
+                                                            early_stop = True
+                                                            break
+                                                        else:
+                                                            # forward delta
+                                                            self.pipe[1].send({'code': "COMPLETION", 'content': json_choice['delta']})
+                                else:
+                                    error += line
+                else:
+                    self._logger.debug("Received full POST response")
+
+                    if len(undecoded_buffer) > 0:
+                        self._logger.warn(f"Ignoring byte sequence '{undecoded_buffer}' after failure to decode it")
+
+                    if len(decoded_buffer) > 0:
+                        error += decoded_buffer
+
+                    # forward remaining usage before end of process
+                    if usage is not None and self.api_endpoints[self.parameters.api_endpoint]['api_flavor'] in ["vllm", "openrouter"]:
+                        self.pipe[1].send({'code': "USAGE", 'content': usage})
+
+                    # forward collected error
+                    if error != "":
+                        message = f"Error while receiving completion: {error}."
+                        message = remove_whitespace(string=message, reduce_to_single_space=True)
+                        self.pipe[1].send({'code': "ERROR", 'content': message})
+            except Exception as e:
+                message = f"Error while receiving completion: {repr(e)}."
+                self.pipe[1].send({'code': "ERROR", 'content': message})
             else:
-                self._logger.debug("Received full POST response")
-
-                if len(undecoded_buffer) > 0:
-                    self._logger.warn(f"Ignoring byte sequence '{undecoded_buffer}' after failure to decode it")
-
-                if len(decoded_buffer) > 0:
-                    error += decoded_buffer
-
-                # forward remaining usage before end of process
-                if usage is not None and self.api_endpoints[self.parameters.api_endpoint]['api_flavor'] in ["vllm", "openrouter"]:
-                    self.pipe[1].send({'code': "USAGE", 'content': usage})
-
-                # forward collected error
-                if error != "":
-                    message = f"Error while receiving completion: {error}."
-                    message = remove_whitespace(string=message, reduce_to_single_space=True)
-                    self.pipe[1].send({'code': "ERROR", 'content': message})
-
-            completion.close()
-            self._logger.debug("Connection closed")
+                completion.close()
+                self._logger.debug("Connection closed")
 
         self._logger.debug("completion_process(): end")
 
@@ -1714,7 +1728,7 @@ class Completions(Node):
                     made_up_id = self.get_clock().now().seconds_nanoseconds()
                     made_up_id = f"{made_up_id[0]}_{made_up_id[1]}"
                     first_text_call['id'] = made_up_id
-                first_text_call['arguments'] = json.dumps(first_text_call['arguments'])
+                first_text_call['arguments'] = json.dumps(first_text_call['arguments'], indent=2)
                 tool_calls.append(first_text_call)
 
         return text, tool_calls, logs
@@ -1759,7 +1773,7 @@ class Completions(Node):
             tool_msg = '\n\n'.join([f"{(i + ': ') if len(tool_calls) > 1 else ''}{print_unvalidated_tool(tool)}" for i, tool in enumerate(tool_calls)])
             response_msg = f"{escape['bold']}{escape['underline']}Tool call{'' if len(tool_calls) == 1 else 's'}{escape['end']}:\n{tool_msg}"
         else:
-            response_msg = f"Malformed completion:\nReasoning: {reasoning}\nText: {text}\nTool calls: {tool_calls}\n"
+            response_msg = f"{escape['bold']}{escape['underline']}Malformed completion{escape['end']}:\nReasoning: {reasoning}\nText: {text}\nTool calls: {tool_calls}\n"
         log_lines(response_msg, line_length=self.parameters.log_line_length, line_highlight="| ", block_format=False, allow_empty_lines=True, logger=self._logger, severity=20)
 
         message = {}

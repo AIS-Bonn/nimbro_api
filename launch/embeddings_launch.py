@@ -4,8 +4,9 @@ from launch_ros.actions import Node
 from launch import LaunchDescription
 from launch.substitutions import LaunchConfiguration
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
-from ament_index_python.packages import get_package_prefix
 from launch_ros.parameter_descriptions import ParameterValue
+
+from nimbro_utils.lazy import get_package_path
 
 launch_args = [
     DeclareLaunchArgument('nimbro_api_embeddings_namespace', default_value='nimbro_api', description='The namespace of all launched nodes.'),
@@ -16,7 +17,7 @@ launch_args = [
     DeclareLaunchArgument('nimbro_api_embeddings_model_name', default_value='text-embedding-3-large', description='Name of the model that is used.'),
     DeclareLaunchArgument('nimbro_api_embeddings_cache_use', default_value='True', choices=['True', 'False'], description='Attempt to retrieve embeddings from cached results.'),
     DeclareLaunchArgument('nimbro_api_embeddings_cache_read_once', default_value='True', choices=['True', 'False'], description='Read embeddings cache file once when required and keep it in memory instead of loading it every time.'),
-    DeclareLaunchArgument('nimbro_api_embeddings_cache_folder', default_value=os.path.join(get_package_prefix("nimbro_api").replace("install", "src"), "cache", "embeddings"), description='Path to the cache folder. If it does not exist it is automatically created.'),
+    DeclareLaunchArgument('nimbro_api_embeddings_cache_folder', default_value=os.path.join(get_package_path("nimbro_api"), "cache", "embeddings"), description='Path to the cache folder. If it does not exist it is automatically created.'),
     DeclareLaunchArgument('nimbro_api_embeddings_cache_file', default_value='cache_embeddings_index.json', description='Name of the cache file inside the cache folder. If it does not exist it is automatically created.'),
     DeclareLaunchArgument('nimbro_api_embeddings_monitor_usage', default_value='True', choices=['True', 'False'], description='Tokenize input strings to monitor usage.')
 ]

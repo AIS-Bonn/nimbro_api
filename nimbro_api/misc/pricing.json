@@ -166,16 +166,16 @@
         "tokens_output": 0.15
     },
     "google/gemma-3-27b-it": {
-        "tokens_input_uncached": 0.067,
-        "tokens_output": 0.267
+        "tokens_input_uncached": 0.07,
+        "tokens_output": 0.26
     },
     "google/gemma-3-12b-it": {
-        "tokens_input_uncached": 0.048,
-        "tokens_output": 0.193
+        "tokens_input_uncached": 0.04,
+        "tokens_output": 0.14
     },
     "google/gemma-3-4b-it": {
-        "tokens_input_uncached": 0.02,
-        "tokens_output": 0.04
+        "tokens_input_uncached": 0.04,
+        "tokens_output": 0.08
     },
 
     "anthropic/claude-opus-4.1": {
@@ -297,7 +297,6 @@
         "tokens_output": 0.15
     },
 
-
     "meta-llama/llama-4-maverick": {
         "tokens_input_uncached": 0.15,
         "tokens_output": 0.60
@@ -336,41 +335,78 @@
         "tokens_output": 10.00
     },
 
+    "qwen/qwen3-max": {
+        "tokens_input_uncached": 1.20,
+        "tokens_output": 6.00
+    },
+    "qwen/qwen3-coder-plus": {
+        "tokens_input_uncached": 1.00,
+        "tokens_output": 5.00
+    },
+    "qwen/qwen3-coder-flash": {
+        "tokens_input_uncached": 0.30,
+        "tokens_output": 1.50
+    },
     "qwen/qwen3-coder": {
-        "tokens_input_uncached": 0.20,
-        "tokens_output": 0.80
+        "tokens_input_uncached": 0.22,
+        "tokens_output": 0.95
+    },
+    "qwen/qwen3-coder-30b-a3b-instruct": {
+        "tokens_input_uncached": 0.07,
+        "tokens_output": 0.28
+    },
+    "qwen/qwen3-vl-235b-a22b-instruct": {
+        "tokens_input_uncached": 0.30,
+        "tokens_output": 2.80
+    },
+    "qwen/qwen3-vl-235b-a22b-thinking": {
+        "tokens_input_uncached": 0.70,
+        "tokens_output": 8.40
     },
     "qwen/qwen3-235b-a22b-2507": {
-        "tokens_input_uncached": 0.078,
-        "tokens_output": 0.312
+        "tokens_input_uncached": 0.09,
+        "tokens_output": 0.60
     },
     "qwen/qwen3-235b-a22b-thinking-2507": {
-        "tokens_input_uncached": 0.078,
-        "tokens_output": 0.312
+        "tokens_input_uncached": 0.10,
+        "tokens_output": 0.39
     },
     "qwen/qwen3-30b-a3b-instruct-2507": {
-        "tokens_input_uncached": 0.20,
-        "tokens_output": 0.80
+        "tokens_input_uncached": 0.07,
+        "tokens_output": 0.28
+    },
+    "qwen/qwen-vl-plus": {
+        "tokens_input_uncached": 0.21,
+        "tokens_output": 0.63
     },
     "qwen/qwen3-14b": {
-        "tokens_input_uncached": 0.06,
-        "tokens_output": 0.24
+        "tokens_input_uncached": 0.04,
+        "tokens_output": 0.14
     },
     "qwen/qwen3-8b": {
         "tokens_input_uncached": 0.035,
         "tokens_output": 0.138
     },
     "qwen/qwen2.5-vl-72b-instruct": {
-        "tokens_input_uncached": 0.10,
-        "tokens_output": 0.40
+        "tokens_input_uncached": 0.07,
+        "tokens_output": 0.28
     },
     "qwen/qwen2.5-vl-32b-instruct": {
-        "tokens_input_uncached": 0.02,
-        "tokens_output": 0.08
+        "tokens_input_uncached": 0.04,
+        "tokens_output": 0.14
     },
     "qwen/qwen-2.5-vl-7b-instruct": {
         "tokens_input_uncached": 0.20,
         "tokens_output": 0.20
+    },
+
+    "allenai/molmo-7b-d": {
+        "tokens_input_uncached": 0.10,
+        "tokens_output": 0.20
+    },
+    "moonshotai/kimi-vl-a3b-thinking": {
+        "tokens_input_uncached": 0.02,
+        "tokens_output": 0.07
     },
 
     "z-ai/glm-4.5v": {

@@ -14,13 +14,12 @@ except ImportError:
 
 import rclpy
 from rclpy.node import Node
-from ament_index_python.packages import get_package_prefix
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
 from std_msgs.msg import String
 
 from nimbro_api_interfaces.srv import UsageGet
 
-from nimbro_utils.lazy import start_and_spin_node, ParameterHandler, Logger, read_json, write_json, assert_type_value, assert_keys, log_lines
+from nimbro_utils.lazy import start_and_spin_node, ParameterHandler, Logger, read_json, write_json, assert_type_value, assert_keys, log_lines, get_package_path
 
 ### <Parameter Defaults>
 
@@ -30,10 +29,10 @@ severity = 10
 cache_read_once = True
 cache_write_lazy = True
 cache_write_interval = 30.0
-cache_folder = os.path.join(get_package_prefix("nimbro_api").replace("install", "src"), "cache")
+cache_folder = os.path.join(get_package_path("nimbro_api"), "cache")
 cache_file = "cache_usage.json"
 
-pricing_path = os.path.join(get_package_prefix("nimbro_api").replace("install", "src"), "nimbro_api", "misc", "pricing.json")
+pricing_path = os.path.join(get_package_path("nimbro_api"), "nimbro_api", "misc", "pricing.json")
 
 ### </Parameter Defaults>
 
@@ -148,7 +147,7 @@ class UsageMonitor(Node):
 
         elif name == "cache_folder":
             if value == "":
-                value = os.path.join(get_package_prefix("nimbro_api").replace("install", "src"), "cache")
+                value = os.path.join(get_package_path("nimbro_api"), "cache")
 
         elif name == "pricing_path":
             # TODO structure this by API type and endpoint and retrieve costs for OpenRouter endpoint from their Models API

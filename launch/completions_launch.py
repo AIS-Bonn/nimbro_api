@@ -3,8 +3,9 @@ from launch_ros.actions import Node
 from launch import LaunchDescription
 from launch.substitutions import LaunchConfiguration
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
-from ament_index_python.packages import get_package_prefix
 from launch_ros.parameter_descriptions import ParameterValue
+
+from nimbro_utils.lazy import get_package_path
 
 launch_args = [
     DeclareLaunchArgument('nimbro_api_completions_namespace', default_value='nimbro_api', description='The namespace of all launched nodes.'),
@@ -27,7 +28,7 @@ launch_args = [
     DeclareLaunchArgument('nimbro_api_completions_model_reasoning_effort', default_value='none', choices=['', 'none', 'low', 'medium', 'high'], description="Reasoning effort spent before generating the completion in ['', 'none', 'low', 'medium', 'high']."),
     DeclareLaunchArgument('nimbro_api_completions_completion_parsers', default_value='[""]', description='Define custom parsers to be executed in order after successful completions.'),
     DeclareLaunchArgument('nimbro_api_completions_completion_parsers_timeout', default_value='5.0', description='Time to wait in seconds for each completion parser to terminate.'),
-    DeclareLaunchArgument('nimbro_api_completions_completion_parsers_folder', default_value=os.path.join(get_package_prefix("nimbro_api").replace("install", "src"), "nimbro_api", "misc", "parsers", "completion"), description='Path to folder in which completion parsers are looked up first before interpreting them as global paths.'),
+    DeclareLaunchArgument('nimbro_api_completions_completion_parsers_folder', default_value=os.path.join(get_package_path("nimbro_api"), "nimbro_api", "misc", "parsers", "completion"), description='Path to folder in which completion parsers are looked up first before interpreting them as global paths.'),
     DeclareLaunchArgument('nimbro_api_completions_stream_completion', default_value='True', choices=['True', 'False'], description='Using streaming to receive completions.'),
     DeclareLaunchArgument('nimbro_api_completions_normalize_text_response', default_value='False', choices=['True', 'False'], description='Applies text normalization to text responses (except JSON mode is used) without affecting the internal state of the context.'),
     DeclareLaunchArgument('nimbro_api_completions_maximum_tool_calls_per_response', default_value='1', description="A response that is allowed to contain tool calls must contain at most this many tool calls. Set to '0' to deactivate."),
@@ -41,12 +42,12 @@ launch_args = [
     DeclareLaunchArgument('nimbro_api_multiplexer_timeout_completion', default_value='500.0', description='Time in seconds waited until a Chat Completion is finished.'),
 
     DeclareLaunchArgument('nimbro_api_usage_severity', default_value='20', choices=['10', '20', '30', '40', '50'], description='Logging severity of node logger.'),
-    DeclareLaunchArgument('nimbro_api_usage_cache_folder', default_value=os.path.join(get_package_prefix("nimbro_api").replace("install", "src"), "cache"), description='Path to the cache folder. If it does not exist it is automatically created.'),
+    DeclareLaunchArgument('nimbro_api_usage_cache_folder', default_value=os.path.join(get_package_path("nimbro_api"), "cache"), description='Path to the cache folder. If it does not exist it is automatically created.'),
     DeclareLaunchArgument('nimbro_api_usage_cache_file', default_value='cache_usage.json', description='Name of the cache file inside the cache folder. If it does not exist it is automatically created.'),
     DeclareLaunchArgument('nimbro_api_usage_cache_read_once', default_value='True', choices=['True', 'False'], description='Read usage cache file once when required and keep it in memory instead of loading it every time.'),
     DeclareLaunchArgument('nimbro_api_usage_cache_write_lazy', default_value='True', choices=['True', 'False'], description='Write usage cache file in fixed intervals instead of writing it with every update.'),
     DeclareLaunchArgument('nimbro_api_usage_cache_write_interval', default_value='30.0', description='Minimum time in seconds in which the usage cache file is written if cache_write_lazy is active.'),
-    DeclareLaunchArgument('nimbro_api_usage_pricing_path', default_value=os.path.join(get_package_prefix("nimbro_api").replace("install", "src"), "nimbro_api", "misc", "pricing.json"), description='Path to the pricing file that stores the model cost per 1M tokens. Set empty string to disable price calculation.')
+    DeclareLaunchArgument('nimbro_api_usage_pricing_path', default_value=os.path.join(get_package_path("nimbro_api"), "nimbro_api", "misc", "pricing.json"), description='Path to the pricing file that stores the model cost per 1M tokens. Set empty string to disable price calculation.')
 ]
 
 def generate_launch_description():

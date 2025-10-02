@@ -847,7 +847,7 @@ class ApiDirectorBase:
         assert_type_value(obj=model_id, type_or_value=int, name="argument 'model_id'", logger=self._logger)
         assert_type_value(obj=model_flavor, type_or_value=str, name="argument 'model_flavor'", logger=self._logger)
         assert_type_value(obj=min_confidence, type_or_value=[list, float], name="argument 'min_confidence'", logger=self._logger)
-        assert_type_value(obj=nms_iou, type_or_value=[list, float], name="argument 'nms_iou'", logger=self._logger)
+        assert_type_value(obj=nms_iou, type_or_value=[list, float, None], name="argument 'nms_iou'", logger=self._logger)
         assert_type_value(obj=overdetect_factor, type_or_value=[list, float, None], name="argument 'overdetect_factor'", logger=self._logger)
 
         batch = False
@@ -893,7 +893,7 @@ class ApiDirectorBase:
         if isinstance(nms_iou, list):
             batch = True
             for item in nms_iou:
-                assert_type_value(obj=item, type_or_value=float, name="element in argument 'nms_iou'", logger=self._logger)
+                assert_type_value(obj=item, type_or_value=[None, float], name="element in argument 'nms_iou'", logger=self._logger)
             if len(nms_iou) == 1:
                 nms_iou = nms_iou[0]
 

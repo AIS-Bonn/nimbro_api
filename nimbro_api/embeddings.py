@@ -11,14 +11,13 @@ import requests
 import rclpy
 from rclpy.node import Node
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
-from ament_index_python.packages import get_package_prefix
 from std_msgs.msg import String
 
 from nimbro_api_interfaces.srv import EmbeddingsGet
 from nimbro_api_interfaces.msg import Embedding
 from nimbro_api.misc.common import validate_default_endpopints, filter_api_endpoint, validate_api_endpoint, retrieve_api_key, probe_models_api, validate_connection
 
-from nimbro_utils.lazy import start_and_spin_node, ParameterHandler, Logger, read_json, write_json, count_tokens, convert_stamp, log_lines
+from nimbro_utils.lazy import start_and_spin_node, ParameterHandler, Logger, read_json, write_json, count_tokens, convert_stamp, log_lines, get_package_path
 
 ### <Parameter Defaults>
 
@@ -31,7 +30,7 @@ model_name = "text-embedding-3-large"
 
 cache_use = True
 cache_read_once = True
-cache_folder = os.path.join(get_package_prefix("nimbro_api").replace("install", "src"), "cache", "embeddings")
+cache_folder = os.path.join(get_package_path("nimbro_api"), "cache", "embeddings")
 cache_file = "cache_embeddings_index.json"
 
 monitor_usage = True
@@ -218,7 +217,7 @@ class Embeddings(Node):
 
         elif name == "cache_folder":
             if value == "":
-                value = os.path.join(get_package_prefix("nimbro_api").replace("install", "src"), "cache")
+                value = os.path.join(get_package_path("nimbro_api"), "cache")
 
         return value, message
 
@@ -456,8 +455,10 @@ class Embeddings(Node):
             for i in range(floor_mod[0]):
                 stamp_start = datetime.datetime.now()
 
+                texts_post = missing_texts[i * max_texts_per_post: (i + 1) * max_texts_per_post]
+                self._logger.info(f"Retrieving partial batch with '{len(texts_post)}' missing embedding{'' if len(texts_post) == 1 else 's'} (got '{len(missing_embeddings)}')")
                 success, message, embeddings_batch = self.embeddings_post(
-                    texts=missing_texts[i * max_texts_per_post: (i + 1) * max_texts_per_post],
+                    texts=texts_post,
                     model=self.parameters.model_name,
                     api_url=self.api_endpoints[self.parameters.api_endpoint]['embeddings_url'],
                     api_key=api_key
@@ -470,8 +471,12 @@ class Embeddings(Node):
             if floor_mod[1] > 0:
                 stamp_start = datetime.datetime.now()
 
+                texts_post = missing_texts[floor_mod[0] * max_texts_per_post:]
+                if floor_mod[0] > 0:
+                    self._logger.info(f"Retrieving partial batch with '{len(texts_post)}' missing embedding{'' if len(texts_post) == 1 else 's'} (got '{len(missing_embeddings)}')")
+
                 success, message, embeddings_batch = self.embeddings_post(
-                    texts=missing_texts[floor_mod[0] * max_texts_per_post:],
+                    texts=texts_post,
                     model=self.parameters.model_name,
                     api_url=self.api_endpoints[self.parameters.api_endpoint]['embeddings_url'],
                     api_key=api_key

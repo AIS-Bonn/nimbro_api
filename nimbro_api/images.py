@@ -10,12 +10,11 @@ import requests
 import rclpy
 from rclpy.node import Node
 from rclpy.callback_groups import ReentrantCallbackGroup
-from ament_index_python.packages import get_package_prefix
 
 from nimbro_api_interfaces.srv import ImagesGet
 from nimbro_api.misc.common import validate_default_endpopints, filter_api_endpoint, validate_api_endpoint, retrieve_api_key, probe_models_api, validate_connection
 
-from nimbro_utils.lazy import start_and_spin_node, ParameterHandler, Logger, decode_b64, read_as_b64
+from nimbro_utils.lazy import start_and_spin_node, ParameterHandler, Logger, decode_b64, read_as_b64, get_package_path
 
 ### <Parameter Defaults>
 
@@ -27,7 +26,7 @@ api_endpoint = "OpenAI"
 
 cache_read = True
 cache_write = True
-cache_folder = os.path.join(get_package_prefix("nimbro_api").replace("install", "src"), "cache", "images")
+cache_folder = os.path.join(get_package_path("nimbro_api"), "cache", "images")
 cache_file = "cache_images.json"
 
 ## non-params
@@ -173,7 +172,7 @@ class Images(Node):
 
         elif name == "cache_folder":
             if value == "":
-                value = os.path.join(get_package_prefix("nimbro_api").replace("install", "src"), "cache")
+                value = os.path.join(get_package_path("nimbro_api"), "cache")
 
         return value, message
 

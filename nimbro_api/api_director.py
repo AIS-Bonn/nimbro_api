@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 
 import os
-from ament_index_python.packages import get_package_prefix
-from nimbro_utils.lazy import update_dict
+from nimbro_utils.lazy import update_dict, get_package_path
 from nimbro_api.api_director_base import ApiDirectorBase
 
 default_settings = {
     # Logger severity in [10, 20, 30, 40, 50] (int).
     'severity': 20,
     # Logger suffix (str).
-    'suffix': "api_director",
+    'suffix': "API",
     # Time in seconds to wait for services to become available and for simple services to respond (float | int).
     'timeout_service': 5,
     # Time in seconds to wait for complex services to respond (float | int).
@@ -27,7 +26,7 @@ default_settings = {
     # Name of the UsageMonitor node to use (str).
     'node_usage_monitor': "/nimbro_api/usage_monitor",
     # Path to a voice presets file (str) or a dict of the same format (dict).
-    'voice_presets': os.path.join(get_package_prefix("nimbro_api").replace("install", "src"), "nimbro_api", "misc", "voice_presets.json")
+    'voice_presets': os.path.join(get_package_path("nimbro_api"), "nimbro_api", "misc", "voice_presets.json")
 }
 
 class ApiDirector(ApiDirectorBase):
@@ -394,7 +393,9 @@ class ApiDirector(ApiDirectorBase):
         Args:
             completions_id (str): The unique identifier of the completions node.
             parameter_names (str | list[str] | None, optional): The names of parameters
-                to set. Can be a single string or list of strings. Defaults to None.
+                to set. Can be a single string or list of strings. Use `get_parameters()` and `ros2 param list`,
+                or see `nimbro_api/nimbro_api/completions.py` and `nimbro_api/launch/completions_launch.py`
+                to find all available parameters, their descriptions, and defaults values. Defaults to None.
             parameter_values (str | list[str] | None, optional): The values corresponding
                 to `parameter_names`. Must be strings as correct types are inferred.
                 Defaults to None.
@@ -600,7 +601,7 @@ class ApiDirector(ApiDirectorBase):
             min_confidence (float | list[float], optional): Minimum confidence threshold
                 for detections. Can be a single value or list for batch processing.
                 Defaults to 0.0.
-            nms_iou (float | list[float], optional): Non-maximum suppression IoU threshold.
+            nms_iou (float | None | list[float | None], optional): Non-maximum suppression IoU threshold.
                 Can be a single value or list for batch processing. Defaults to 0.6.
             overdetect_factor (float | None | list[float | None], optional): Factor to control
                 over-detect-factor. Can be a single value or list for batch processing.
