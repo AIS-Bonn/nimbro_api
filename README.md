@@ -108,6 +108,9 @@ If you utilize this package in your research, please cite one of our relevant pu
         author={Bastian P{\"a}tzold and Jan Nogga and Sven Behnke},
         title={Leveraging Vision-Language Models for Open-Vocabulary Instance Segmentation and Tracking},
         journal={IEEE Robotics and Automation Letters (RA-L)},
+        volume={10},
+        number={11},
+        pages={11578-11585},
         year={2025}
     }
     ```
@@ -119,6 +122,7 @@ If you utilize this package in your research, please cite one of our relevant pu
         author={Jonas Bode and Bastian P{\"a}tzold and Raphael Memmesheimer and Sven Behnke},
         title={A Comparison of Prompt Engineering Techniques for Task Planning and Execution in Service Robotics},
         journal={IEEE-RAS International Conference on Humanoid Robots (Humanoids)},
+        pages={309-314},
         year={2024}
     }
     ```
@@ -130,6 +134,8 @@ If you utilize this package in your research, please cite one of our relevant pu
         author={Raphael Memmesheimer and Jan Nogga and Bastian P{\"a}tzold and Evgenii Kruzhkov and Simon Bultmann and Michael Schreiber and Jonas Bode and Bertan Karacora and Juhui Park and Alena Savinykh and Sven Behnke},
         title={{RoboCup@Home 2024 OPL Winner NimbRo}: Anthropomorphic Service Robots using Foundation Models for Perception and Planning},
         journal={RoboCup 2024: RoboCup World Cup XXVII},
+        volume={15570},
+        pages={515-527},
         year={2025}
     }
     ```
