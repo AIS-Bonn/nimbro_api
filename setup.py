@@ -6,7 +6,7 @@ package_name = "nimbro_api"
 setup(
     name=package_name,
     version="1.1.0",
-    packages=find_packages(include=[f"{package_name}*"]),
+    packages=find_packages(include=[f"{package_name}*", "examples*"]),
     data_files=[
         ("share/ament_index/resource_index/packages",
             ["resource/" + package_name]),
@@ -27,6 +27,8 @@ setup(
             f"images = {package_name}.images:main",
             f"nimbro_vision = {package_name}.nimbro_vision:main",
             f"speech = {package_name}.speech:main",
+            f"transcriptions = {package_name}.transcriptions:main",
+            f"translations = {package_name}.translations:main",
             f"usage_monitor = {package_name}.usage_monitor:main",
             f"test = {package_name}.misc.test:main",
             "toy_example_1 = examples.toy_example_1:main",

@@ -24,6 +24,16 @@ def generate_launch_description():
             get_package_share_directory('nimbro_api'), '/launch/speech_launch.py'])
     )
 
+    transcription = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([
+            get_package_share_directory('nimbro_api'), '/launch/transcriptions_launch.py'])
+    )
+
+    translation = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([
+            get_package_share_directory('nimbro_api'), '/launch/translations_launch.py'])
+    )
+
     nimbro_vision = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
             get_package_share_directory('nimbro_api'), '/launch/nimbro_vision_launch.py'])
@@ -34,5 +44,7 @@ def generate_launch_description():
         embeddings,
         images,
         speech,
+        transcription,
+        translation,
         nimbro_vision
     ])

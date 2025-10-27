@@ -4,14 +4,14 @@ Integration of various APIs with the [ROS2 Jazzy](https://docs.ros.org/en/jazzy/
 
 ## Features
 
-- Supported APIs: [Chat Completions](https://platform.openai.com/docs/api-reference/chat), [Embeddings](https://platform.openai.com/docs/api-reference/embeddings), [Speech](https://platform.openai.com/docs/api-reference/speech), [Images](https://platform.openai.com/docs/api-reference/images), [NimbRoVisionServers](https://github.com/AIS-Bonn/nimbro_vision_servers).
+- Supported APIs: [Chat Completions](https://platform.openai.com/docs/api-reference/chat), [Embeddings](https://platform.openai.com/docs/api-reference/embeddings), [Speech](https://platform.openai.com/docs/api-reference/audio/createSpeech), [Transcriptions](https://platform.openai.com/docs/api-reference/audio/createTranscription), [Translations](https://platform.openai.com/docs/api-reference/audio/createTranslation), [Images](https://platform.openai.com/docs/api-reference/images), [NimbRoVisionServers](https://github.com/AIS-Bonn/nimbro_vision_servers).
 - Supported providers: [OpenAI](https://platform.openai.com/docs/api-reference/chat), [Mistral AI](https://docs.mistral.ai/api/#tag/chat), [OpenRouter](https://openrouter.ai/docs/api-reference/overview), [vLLM](https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html?ref=blog.mozilla.ai), or custom ones behaving similar.
 - The integration of the [Chat Completions](https://platform.openai.com/docs/api-reference/chat) API supports: Reasoning, (parallel) tool calling, JSON mode, image/audio/file inputs, web search, streaming, model parameters, context editing, [custom parsers](./nimbro_api/misc/parsers/completion/completion_parser_template.py), error correction, robust timeout behavior, etc.
 - Easy Python bindings in a central object ([ApiDirector](./nimbro_api/api_director.py)) attachable to your node.
 - A [Jupyter Notebook](./examples/tutorial.ipynb) with examples and descriptions of most features provided.
 - Tracking of token usage with [cost estimation](./nimbro_api/misc/pricing.json).
 - Caching responses to reduce latency and costs.
-- Lite [dependencies](./requirements.txt).
+- Light [dependencies](./requirements.txt).
 
 ## Setup
 
@@ -39,12 +39,9 @@ To install this and all other [optional](./requirements.txt) Python dependencies
 pip install -r requirements.txt
 ```
 
-<!-- ### Docker
+### Docker
 
-Alternatively, you may use the provided [devcontainer](./.devcontainer) or [Docker](./Docker) image:
-```bash
-TODO
-``` -->
+Alternatively, you can use the provided [devcontainer](./.devcontainer) or [Dockerfile](./.devcontainer/Dockerfile).
 
 ### Quick Start
 
@@ -89,13 +86,12 @@ success, message, completion = self.api_director.prompt(
 
 ## TODOs
 
-Features that I would like to see implemented:
-- [ ] Action client for streamed Chat Completions
-- [ ] Context parsers for Chat Completions
-- [ ] Support Transcriptions API
-- [ ] Audio/Vision output for Chat Completions
-- [ ] Structured outputs beyond tools for Chat Completions
-- [ ] Configurable random seed for Chat Completions
+Features that I would like to see implemented:<br>
+- [ ] Action client for streamed Chat Completions<br>
+- [ ] Context parsers for Chat Completions<br>
+- [ ] Audio/Vision output for Chat Completions<br>
+- [ ] Structured outputs beyond tools for Chat Completions<br>
+- [ ] Configurable random seed for Chat Completions<br>
 
 ## Citation
 

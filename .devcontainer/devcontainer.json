@@ -1,8 +1,7 @@
 {
     "name": "nimbro Dev Container",
     "build": {
-        "dockerfile": "Dockerfile_jazzy",
-        // "dockerfile": "Dockerfile_humble",
+        "dockerfile": "Dockerfile",
         "context": "../.."
     },
     "customizations": {

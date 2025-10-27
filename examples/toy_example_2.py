@@ -1,22 +1,20 @@
 #!/usr/bin/env python3
 
+import json
 import time
 import copy
 import traceback
 
-import rclpy
 from rclpy.node import Node
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
-from rcl_interfaces.msg import ParameterDescriptor, ParameterType, IntegerRange
 
-from nimbro_api.api_director import ApiDirector
-from nimbro_api.utils.parameter_handler import ParameterHandler
-from nimbro_api.utils.node import start_and_spin_node
+from nimbro_api import ApiDirector
+from nimbro_utils.lazy import start_and_spin_node, ParameterHandler, Logger
 
 ### <Parameter Defaults>
 
 node_name = "toy_example_2"
-logger_level = 10
+severity = 10
 
 ## non-params
 
@@ -26,16 +24,19 @@ add_deception_functions = False
 probe_api_connection = True
 api_endpoint = "OpenAI" # "Mistral AI"
 model_name = "gpt-4o" # "mistral-large-latest"
-model_temperatur = 0.01
+model_temperature = 0.01
 model_top_p = 0.01
 model_max_tokens = 1000
 model_presence_penalty = 0.0
 model_frequency_penalty = 0.0
+model_reasoning_effort = "none"
+completion_parsers = [""]
 stream_completion = False
-normalize_text_response = False
-max_tool_calls_per_response = 1
+normalize_text_completion = False
+max_tool_calls_per_completion = 1
 correction_attempts = 3
-timeout_chunk = 5.0
+timeout_chunk_first = 5.0
+timeout_chunk_next = 5.0
 timeout_completion = 30.0
 
 model_system_prompt = "You control a service robot via a set of functions in order to accomplish a given task. Carefully read the function and parameter descriptions to understand their behavior and select the appropriate ones. Expect functions to return unexpected results and adapt to it. Do not ever use the 'multi_tool_use.parallel' function. Instead, call functions sequentially, one per response."
@@ -50,26 +51,21 @@ class ToyExample(Node):
 
     def __init__(self, name=node_name, *, context=None, **kwargs):
         super().__init__(name, context=context, **kwargs)
-        self.node_name = self.get_name()
-        self.node_namespace = self.get_namespace()
 
-        self.parameter_handler = ParameterHandler(self)
-        self.add_on_set_parameters_callback(self.parameter_handler.parameter_callback)
+        self._logger = Logger(self)
 
-        descriptor = ParameterDescriptor()
-        descriptor.name = "logger_level"
-        descriptor.type = ParameterType.PARAMETER_INTEGER
-        descriptor.description = "Logger level of this node (DEBUG=10, INFO=20, WARN=30, ERROR=40, FATAL=50)."
-        descriptor.read_only = False
-        int_range = IntegerRange()
-        int_range.from_value = 10
-        int_range.to_value = 50
-        int_range.step = 10
-        descriptor.integer_range.append(int_range)
-        self.parameter_descriptors.append(descriptor)
-        self.declare_parameter(descriptor.name, logger_level, descriptor)
+        self.parameter_handler = ParameterHandler(self, settings={'severity': 20, 'log_init_as_debug': True})
 
-        self.parameter_handler.all_declared()
+        self.parameter_handler.declare(
+            name="severity",
+            dtype=int,
+            default_value=severity,
+            description="Logging severity of node logger.",
+            read_only=False,
+            range_min=10,
+            range_max=50,
+            range_step=10
+        )
 
         self.results = []
         self.api_director = ApiDirector(self)
@@ -81,50 +77,42 @@ class ToyExample(Node):
     def __del__(self):
         self.get_logger().info("Node shutdown")
 
-    def parameter_changed(self, parameter):
-        success = True
-        reason = ""
+    def filter_parameter(self, name, value, is_declared):
+        message = None
 
-        if parameter.name == "logger_level":
-            rclpy.logging.set_logger_level(f"{self.node_namespace}/{self.node_name}".replace("//", "/")[1:].replace("/", "."), rclpy.logging.LoggingSeverity(parameter.value))
+        if name == "severity":
+            self._logger.set_settings(settings={'severity': value})
 
-        else:
-            return None, None
-
-        return success, reason
+        return value, message
 
     def configure_model(self):
-        self.get_logger().debug("Configuring LLM")
-
         success, message, self.completions_id = self.api_director.acquire(reset_parameters=True, reset_context=True, retry=True)
         if not success:
             raise Exception(f"Unexpected failure in api_director.acquire(retry=True): {message}")
-        else:
-            self.get_logger().debug(f"Using completions '{self.completions_id}'")
 
         params_main = {
-            "logger_level": str(logger_level),
             "probe_api_connection": str(probe_api_connection),
             "api_endpoint": api_endpoint,
             "model_name": model_name,
-            "model_temperatur": str(model_temperatur),
+            "model_temperature": str(model_temperature),
             "model_top_p": str(model_top_p),
             "model_max_tokens": str(model_max_tokens),
             "model_presence_penalty": str(model_presence_penalty),
             "model_frequency_penalty": str(model_frequency_penalty),
+            "model_reasoning_effort": model_reasoning_effort,
+            "completion_parsers": json.dumps(completion_parsers),
             "stream_completion": str(stream_completion),
-            "normalize_text_response": str(normalize_text_response),
-            "max_tool_calls_per_response": str(max_tool_calls_per_response),
+            "normalize_text_completion": str(normalize_text_completion),
+            "max_tool_calls_per_completion": str(max_tool_calls_per_completion),
             "correction_attempts": str(correction_attempts),
-            "timeout_chunk": str(timeout_chunk),
+            "timeout_chunk_first": str(timeout_chunk_first),
+            "timeout_chunk_next": str(timeout_chunk_next),
             "timeout_completion": str(timeout_completion)
         }
 
         success, message = self.api_director.set_parameters(self.completions_id, list(params_main.keys()), list(params_main.values()), retry=True)
         if not success:
             raise Exception(f"Unexpected failure in api_director.set_parameter(retry=True): {message}")
-
-        self.get_logger().info("Configured LLM")
 
     def state_machine(self):
         self.timer_state_machine.cancel()
@@ -306,6 +294,8 @@ class ToyExample(Node):
                 if self.results[i][0]:
                     w += 1
             self.get_logger().info("In total, " + str(w) + "/" + str(len(self.results)) + " attempt " + ("was" if w == 1 else "were") + " successful")
+
+        self.get_logger().info("Node stopped")
 
     def update_tools(self):
         tools = []

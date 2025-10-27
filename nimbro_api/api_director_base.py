@@ -14,7 +14,7 @@ import rclpy
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
 import builtin_interfaces.msg
 
-from nimbro_api_interfaces.srv import NimbroVisionGet, EmbeddingsGet, ImagesGet, SpeechGet, UsageGet
+from nimbro_api_interfaces.srv import NimbroVisionGet, EmbeddingsGet, ImagesGet, SpeechGet, TranscriptionsGet, TranslationsGet, UsageGet
 from nimbro_api_interfaces.srv import CompletionsManage, CompletionsStatusGet, CompletionsSettingsGet
 from nimbro_api_interfaces.srv import CompletionsPrompt, CompletionsInterrupt, CompletionsToolsGet, CompletionsToolsSet, CompletionsContextGet, CompletionsContextSet
 
@@ -100,8 +100,11 @@ class ApiDirectorBase:
             else:
                 self._logger.info(f"[{prefix}] {message}")
         else:
+            message_cutoff = 500
             if message == "":
                 self._logger.error(f"[{prefix}] Function failed with empty message.")
+            elif len(message) > message_cutoff:
+                self._logger.error(f"[{prefix}] {message[:message_cutoff]}...")
             else:
                 self._logger.error(f"[{prefix}] {message}")
 
@@ -175,8 +178,8 @@ class ApiDirectorBase:
         assert_type_value(obj=keep_existing, type_or_value=bool, name="argument 'keep_existing'", logger=self._logger)
         settings = update_dict(old_dict=self._settings if keep_existing else {}, new_dict=settings, key_name="setting", logger=self._logger, info=False, debug=False)
         default_settings_names = [
-            'severity', 'suffix', 'timeout_service', 'timeout_response', 'node_completions_multiplexer',
-            'node_embeddings', 'node_images', 'node_speech', 'node_nimbro_vision', 'node_usage_monitor', 'voice_presets'
+            'severity', 'suffix', 'timeout_service', 'timeout_response', 'node_completions_multiplexer', 'node_embeddings', 'node_images',
+            'node_speech', 'node_transcriptions', 'node_translations', 'node_nimbro_vision', 'node_usage_monitor', 'voice_presets'
         ]
         assert_keys(obj=settings, keys=default_settings_names, mode="match", name="settings", logger=self._logger)
 
@@ -185,7 +188,7 @@ class ApiDirectorBase:
 
         # node names
         create_client = {}
-        for name in ['node_completions_multiplexer', 'node_embeddings', 'node_images', 'node_speech', 'node_nimbro_vision', 'node_usage_monitor']:
+        for name in ['node_completions_multiplexer', 'node_embeddings', 'node_images', 'node_speech', 'node_transcriptions', 'node_translations', 'node_nimbro_vision', 'node_usage_monitor']:
             assert_type_value(obj=settings[name], type_or_value=str, name=f"setting '{name}'", logger=self._logger)
             settings[name] = "/" + re.sub(r'^/+|/+$', '', settings[name])
             create_client[name] = True
@@ -241,6 +244,16 @@ class ApiDirectorBase:
             else:
                 self._node.destroy_client(self._cli_get_speech)
 
+            if settings['node_transcriptions'] == self._settings['node_transcriptions']:
+                create_client['node_transcriptions'] = False
+            else:
+                self._node.destroy_client(self._cli_get_transcriptions)
+
+            if settings['node_translations'] == self._settings['node_translations']:
+                create_client['node_translations'] = False
+            else:
+                self._node.destroy_client(self._cli_get_translations)
+
             if settings['node_nimbro_vision'] == self._settings['node_nimbro_vision']:
                 create_client['node_nimbro_vision'] = False
             else:
@@ -278,6 +291,12 @@ class ApiDirectorBase:
 
         if create_client['node_speech']:
             self._cli_get_speech = self._node.create_client(SpeechGet, f"{settings['node_speech']}/get_speech", qos_profile=self._qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
+
+        if create_client['node_transcriptions']:
+            self._cli_get_transcriptions = self._node.create_client(TranscriptionsGet, f"{settings['node_transcriptions']}/get_transcription", qos_profile=self._qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
+
+        if create_client['node_translations']:
+            self._cli_get_translations = self._node.create_client(TranslationsGet, f"{settings['node_translations']}/get_translation", qos_profile=self._qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
 
         if create_client['node_nimbro_vision']:
             self._cli_mmgroundingdino = self._node.create_client(NimbroVisionGet, f"{settings['node_nimbro_vision']}/mmgroundingdino", qos_profile=self._qos_profile, callback_group=ReentrantCallbackGroup())
@@ -796,7 +815,7 @@ class ApiDirectorBase:
 
         return self._log_return(prefix, success, message, path)
 
-    # Speech API
+    # Audio APIs
 
     def _get_speech(self, text, model, voice, speed, instructions, retry):
         assert_type_value(obj=text, type_or_value=str, name="argument 'text'", logger=self._logger)
@@ -838,6 +857,76 @@ class ApiDirectorBase:
             path = None
 
         return self._log_return(prefix, success, message, path)
+
+    def _get_transcription(self, path, model, temperature, language, prompt, response_format, retry):
+        assert_type_value(obj=path, type_or_value=str, name="argument 'path'", logger=self._logger)
+        assert_type_value(obj=model, type_or_value=[None, str], name="argument 'model'", logger=self._logger)
+        assert_type_value(obj=temperature, type_or_value=float, name="argument 'temperature'", logger=self._logger)
+        assert_type_value(obj=language, type_or_value=[None, str], name="argument 'language'", logger=self._logger)
+        assert_type_value(obj=prompt, type_or_value=[None, str], name="argument 'prompt'", logger=self._logger)
+
+        prefix = "transcriptions"
+
+        request = request = TranscriptionsGet.Request()
+        request.path = path
+        request.model = "" if model is None else model
+        request.temperature = temperature
+        request.language = "" if language is None else language
+        request.prompt = "" if prompt is None else prompt
+        request.response_format = response_format
+
+        success, message, response = self._client_wrapper(
+            prefix=prefix,
+            client=self._cli_get_transcriptions,
+            request=request,
+            timeout_service=self._settings['timeout_service'],
+            timeout_response=self._settings['timeout_response'],
+            retry=retry
+        )
+
+        if success:
+            try:
+                transcription = json.loads(response.transcription)
+            except Exception:
+                transcription = response.transcription
+        else:
+            transcription = None
+
+        return self._log_return(prefix, success, message, transcription)
+
+    def _get_translation(self, path, model, temperature, prompt, response_format, retry):
+        assert_type_value(obj=path, type_or_value=str, name="argument 'path'", logger=self._logger)
+        assert_type_value(obj=model, type_or_value=[None, str], name="argument 'model'", logger=self._logger)
+        assert_type_value(obj=temperature, type_or_value=float, name="argument 'temperature'", logger=self._logger)
+        assert_type_value(obj=prompt, type_or_value=[None, str], name="argument 'prompt'", logger=self._logger)
+
+        prefix = "translations"
+
+        request = request = TranslationsGet.Request()
+        request.path = path
+        request.model = "" if model is None else model
+        request.temperature = temperature
+        request.prompt = "" if prompt is None else prompt
+        request.response_format = response_format
+
+        success, message, response = self._client_wrapper(
+            prefix=prefix,
+            client=self._cli_get_translations,
+            request=request,
+            timeout_service=self._settings['timeout_service'],
+            timeout_response=self._settings['timeout_response'],
+            retry=retry
+        )
+
+        if success:
+            try:
+                translation = json.loads(response.translation)
+            except Exception:
+                translation = response.translation
+        else:
+            translation = None
+
+        return self._log_return(prefix, success, message, translation)
 
     # NimbRo Vision API
 

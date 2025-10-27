@@ -1078,7 +1078,6 @@ class Completions(Node):
                         # extract tool calls from text
                         if len(tool_calls) == 0 and request.response_type not in ["text", "auto", "json"]:
                             text, tool_calls, logs = self.extract_tool_call_from_text(text, tool_calls, logs)
-                        tool_calls, logs = self.clean_tool_call_names(tool_calls, logs)
 
                         # extract JSON from text
                         if request.response_type == "json":
@@ -1091,16 +1090,22 @@ class Completions(Node):
                                     log_lines(logs[-1], line_length=self.parameters.log_line_length, line_highlight="| ", block_format=False, logger=self._logger, severity=30)
                                     text = json.dumps(dict_extracted, indent=2)
 
-                        # extract tool call arguments
-                        for i in range(len(tool_calls)):
-                            try:
-                                json.loads(tool_calls[i]['arguments'])
-                            except Exception:
-                                parameters = extract_json(tool_calls[i]['arguments'])
-                                if parameters is not None:
-                                    logs.append(f"Extracted JSON from invalid tool call arguments: '{tool_calls[i]['arguments']}'")
-                                    log_lines(logs[-1], line_length=self.parameters.log_line_length, line_highlight="| ", block_format=False, logger=self._logger, severity=30)
-                                    tool_calls[i]['arguments'] = json.dumps(parameters, indent=2)
+                        # ensure tool call arguments are valid and extract them if not
+                        for i, tool in enumerate(tool_calls):
+                            if tool['arguments'] == "":
+                                tool_calls[i]['arguments'] = r"{}"
+                            else:
+                                try:
+                                    json.loads(tool['arguments'])
+                                except Exception:
+                                    parameters = extract_json(tool['arguments'])
+                                    if parameters is not None:
+                                        logs.append(f"Extracted JSON from invalid tool call arguments: '{tool['arguments']}'")
+                                        log_lines(logs[-1], line_length=self.parameters.log_line_length, line_highlight="| ", block_format=False, logger=self._logger, severity=30)
+                                        tool_calls[i]['arguments'] = json.dumps(parameters, indent=2)
+
+                        # ensure valid tool names
+                        tool_calls, logs = self.clean_tool_call_names(tool_calls, logs)
 
                         logs = self.add_completion_to_context(reasoning, text, tool_calls, logs)
                         break
@@ -1619,7 +1624,7 @@ class Completions(Node):
         usage['duration'] = (stamp_stop - stamp_start_iso).total_seconds()
 
         if chunk is not None:
-            # Ignoring everything other than 'prompt_tokens', 'cached_tokens', and 'completion_tokens' until provers agree on a standard to deal with reasoning/audio/image tokens.
+            # Ignoring everything other than 'prompt_tokens', 'cached_tokens', and 'completion_tokens' until model providers agree on a standard to deal with reasoning/audio/image tokens.
             if chunk['content']['prompt_tokens'] > 0:
                 usage['tokens_input_uncached'] = chunk['content']['prompt_tokens']
             if 'prompt_tokens_details' in chunk['content'] and chunk['content']['prompt_tokens_details'] is None:
@@ -1734,9 +1739,9 @@ class Completions(Node):
         return text, tool_calls, logs
 
     def clean_tool_call_names(self, tool_calls, logs):
-        # I experienced openai referring to undefined functions names in a way that includes special characters (e.g. 'assistant.tell_joke' instead of 'tell_joke').
-        # Responding to such a function would cause the completion to respond with 'invalid function name' due to the illegal use of special characters.
-        # So, we remove special characters here, establish a legal function name, and then let the self correction routines check validity w.r.t. the defined JSON Schema.
+        # I experienced OpenAI referring to undefined function names such that they contain special characters (e.g. 'assistant.tell_joke' instead of 'tell_joke').
+        # Meanwhile, responding to such a function would cause the completion to trigger an 'invalid function name' error due to the illegal use of special characters.
+        # Therefore, we remove special characters here, establish a legal function name before letting the self correction routines check validity w.r.t. the defined JSON Schemas.
         for i, call in enumerate(tool_calls):
             if not re.match('^[a-zA-Z0-9_-]{1,64}$', call['name']):
                 tool_calls[i]['name'] = re.sub(r"[^a-zA-Z0-9_-]", "", call['name'])

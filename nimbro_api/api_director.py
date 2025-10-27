@@ -21,6 +21,10 @@ default_settings = {
     'node_images': "/nimbro_api/images",
     # Name of the Speech node to use (str).
     'node_speech': "/nimbro_api/speech",
+    # Name of the Transcriptions node to use (str).
+    'node_transcriptions': "/nimbro_api/transcriptions",
+    # Name of the Translations node to use (str).
+    'node_translations': "/nimbro_api/translations",
     # Name of the NimbroVision node to use (str).
     'node_nimbro_vision': "/nimbro_api/nimbro_vision",
     # Name of the UsageMonitor node to use (str).
@@ -31,7 +35,7 @@ default_settings = {
 
 class ApiDirector(ApiDirectorBase):
     """
-    ROS2 client interface for accessing various AI model APIs through service calls.
+    ROS2 node extension for accessing various AI model APIs through service calls.
 
     Provides a robust and flexible Python interface to the Chat Completions API,
     Embeddings API, Images API, Speech API, and NimbRo Vision API, as well as
@@ -44,9 +48,10 @@ class ApiDirector(ApiDirectorBase):
         Initialize the ApiDirector with a ROS2 node and optional settings.
 
         Args:
-            node (rclpy.node.Node): The ROS2 node to use for service communication.
+            node (rclpy.node.Node): The ROS2 node spinned by a multithreaded executor used for service communication.
             settings (dict | None, optional): Configuration settings to override defaults.
-            Will be merged with `default_settings`. Defaults to None.
+                Dictionaries with a subset of settings (or None) are completed with `default_settings`.
+                Defaults to None.
 
         Raises:
             AssertionError: If arguments are invalid.
@@ -554,7 +559,7 @@ class ApiDirector(ApiDirectorBase):
         """
         return self._get_images(prompt, model, quality, style, size, retry)
 
-    # Speech API
+    # Audio APIs
 
     def get_speech(self, text, model=None, voice=None, speed=1.0, instructions=None, retry=False):
         """
@@ -585,6 +590,12 @@ class ApiDirector(ApiDirectorBase):
                 - path (str | None): The path to the generated speech file, or None if failed.
         """
         return self._get_speech(text, model, voice, speed, instructions, retry)
+
+    def get_transcription(self, path, model=None, temperature=0.0, language=None, prompt=None, response_format="json", retry=False):
+        return self._get_transcription(path, model, temperature, language, prompt, response_format, retry)
+
+    def get_translation(self, path, model=None, temperature=0.0, prompt=None, response_format="verbose_json", retry=False):
+        return self._get_translation(path, model, temperature, prompt, response_format, retry)
 
     # NimbRo Vision API
 

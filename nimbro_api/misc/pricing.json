@@ -186,6 +186,10 @@
         "tokens_input_uncached": 15.00,
         "tokens_output": 75.00
     },
+    "anthropic/claude-sonnet-4.5": {
+        "tokens_input_uncached": 3.00,
+        "tokens_output": 15.00
+    },
     "anthropic/claude-sonnet-4": {
         "tokens_input_uncached": 3.00,
         "tokens_output": 15.00
@@ -201,6 +205,10 @@
     "anthropic/claude-3.5-sonnet": {
         "tokens_input_uncached": 3.00,
         "tokens_output": 15.00
+    },
+    "anthropic/claude-haiku-4.5": {
+        "tokens_input_uncached": 1.00,
+        "tokens_output": 5.00
     },
     "anthropic/claude-3.5-haiku": {
         "tokens_input_uncached": 0.80,
@@ -315,6 +323,11 @@
         "tokens_input_cached": 0.75,
         "tokens_output": 15.00
     },
+    "x-ai/grok-4-fast": {
+        "tokens_input_uncached": 0.20,
+        "tokens_input_cached": 0.05,
+        "tokens_output": 0.50
+    },
     "x-ai/grok-code-fast-1": {
         "tokens_input_uncached": 0.20,
         "tokens_input_cached": 0.02,
@@ -371,6 +384,14 @@
         "tokens_input_uncached": 0.10,
         "tokens_output": 0.39
     },
+    "qwen/qwen3-vl-30b-a3b-instruct": {
+        "tokens_input_uncached": 0.20,
+        "tokens_output": 0.70
+    },
+    "qwen/qwen3-vl-30b-a3b-thinking": {
+        "tokens_input_uncached": 0.20,
+        "tokens_output": 1.00
+    },
     "qwen/qwen3-30b-a3b-instruct-2507": {
         "tokens_input_uncached": 0.07,
         "tokens_output": 0.28
@@ -382,6 +403,14 @@
     "qwen/qwen3-14b": {
         "tokens_input_uncached": 0.04,
         "tokens_output": 0.14
+    },
+    "qwen/qwen3-vl-8b-instruct": {
+        "tokens_input_uncached": 0.08,
+        "tokens_output": 0.50
+    },
+    "qwen/qwen3-vl-8b-thinking": {
+        "tokens_input_uncached": 0.18,
+        "tokens_output": 2.10
     },
     "qwen/qwen3-8b": {
         "tokens_input_uncached": 0.035,
