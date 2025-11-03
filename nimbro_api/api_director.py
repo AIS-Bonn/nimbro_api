@@ -17,14 +17,14 @@ default_settings = {
     'node_completions_multiplexer': "/nimbro_api/completions_multiplexer",
     # Name of the Embeddings node to use (str).
     'node_embeddings': "/nimbro_api/embeddings",
-    # Name of the Images node to use (str).
-    'node_images': "/nimbro_api/images",
     # Name of the Speech node to use (str).
     'node_speech': "/nimbro_api/speech",
     # Name of the Transcriptions node to use (str).
     'node_transcriptions': "/nimbro_api/transcriptions",
     # Name of the Translations node to use (str).
     'node_translations': "/nimbro_api/translations",
+    # Name of the Images node to use (str).
+    'node_images': "/nimbro_api/images",
     # Name of the NimbroVision node to use (str).
     'node_nimbro_vision': "/nimbro_api/nimbro_vision",
     # Name of the UsageMonitor node to use (str).
@@ -38,9 +38,9 @@ class ApiDirector(ApiDirectorBase):
     ROS2 node extension for accessing various AI model APIs through service calls.
 
     Provides a robust and flexible Python interface to the Chat Completions API,
-    Embeddings API, Images API, Speech API, and NimbRo Vision API, as well as
-    usage monitoring capabilities and support for asynchronous operations,
-    abstracting away ROS2 service communication details.
+    Embeddings API, Speech API, Transcriptions API, Translations API, Images API,
+    NimbRo Vision API, as well as usage monitoring capabilities and support for
+    asynchronous operations, abstracting away ROS2 service communication details.
     """
 
     def __init__(self, node, settings=None):
@@ -48,7 +48,7 @@ class ApiDirector(ApiDirectorBase):
         Initialize the ApiDirector with a ROS2 node and optional settings.
 
         Args:
-            node (rclpy.node.Node): The ROS2 node spinned by a multithreaded executor used for service communication.
+            node (rclpy.node.Node): The ROS2 node spinned by a multi-threaded executor used for service communication.
             settings (dict | None, optional): Configuration settings to override defaults.
                 Dictionaries with a subset of settings (or None) are completed with `default_settings`.
                 Defaults to None.
@@ -57,8 +57,7 @@ class ApiDirector(ApiDirectorBase):
             AssertionError: If arguments are invalid.
         """
         settings = update_dict(old_dict=default_settings, new_dict=settings)
-        super().__init__(node=node, settings=settings)
-
+        self._base = ApiDirectorBase(node=node, settings=settings)
     # ApiDirector Settings
 
     def get_settings(self):
@@ -68,7 +67,7 @@ class ApiDirector(ApiDirectorBase):
         Returns:
             dict: A deep copy of the current settings.
         """
-        return self._get_settings()
+        return self._base.get_settings()
 
     def set_settings(self, settings, keep_existing=True):
         """
@@ -82,7 +81,7 @@ class ApiDirector(ApiDirectorBase):
         Raises:
             AssertionError: If input arguments or provided settings are invalid.
         """
-        return self._set_settings(settings, keep_existing)
+        return self._base.set_settings(settings, keep_existing)
 
     # Chat Completions API - Management
 
@@ -107,7 +106,7 @@ class ApiDirector(ApiDirectorBase):
                 - acquired (list[bool] | None): Corresponding list indicating if each
                   completions node is currently acquired, or None if failed.
         """
-        return self._get_status(retry)
+        return self._base.get_status(retry)
 
     def acquire(self, reset_parameters=True, reset_context=True, retry=False):
         """
@@ -132,7 +131,7 @@ class ApiDirector(ApiDirectorBase):
                 - completions_id (str | None): The ID of the newly acquired completions
                   node, or None if failed.
         """
-        return self._acquire(reset_parameters, reset_context, retry)
+        return self._base.acquire(reset_parameters, reset_context, retry)
 
     def duplicate(self, completions_id, retry=False):
         """
@@ -154,7 +153,7 @@ class ApiDirector(ApiDirectorBase):
                 - new_completions_id (str | None): The ID of the newly created duplicate
                   completions node, or None if failed.
         """
-        return self._duplicate(completions_id, retry)
+        return self._base.duplicate(completions_id, retry)
 
     def release(self, completions_id=None, retry=False):
         """
@@ -175,7 +174,7 @@ class ApiDirector(ApiDirectorBase):
                 - success (bool): True if the operation succeeded, False otherwise.
                 - message (str): A descriptive message about the operation result.
         """
-        return self._release(completions_id, retry)
+        return self._base.release(completions_id, retry)
 
     # Chat Completions API - Prompting
 
@@ -214,7 +213,7 @@ class ApiDirector(ApiDirectorBase):
                 - completion (dict | None): The parsed response containing 'text_response'
                   (str) or 'tool_response' (list) if successful, or None if failed.
         """
-        return self._prompt(completions_id, text, role, reset_context, tool_response_id, response_type, identifier, retry)
+        return self._base.prompt(completions_id, text, role, reset_context, tool_response_id, response_type, identifier, retry)
 
     def async_prompt(self, completions_id, text, role="user", reset_context=False, tool_response_id=None, response_type="auto", identifier=None, retry=False, succeed_async_id=None):
         """
@@ -253,7 +252,7 @@ class ApiDirector(ApiDirectorBase):
                 - async_id (str | None): The ID for retrieving the async result later,
                   or None if failed.
         """
-        return self._async_prompt(completions_id, text, role, reset_context, tool_response_id, response_type, identifier, retry, succeed_async_id)
+        return self._base.async_prompt(completions_id, text, role, reset_context, tool_response_id, response_type, identifier, retry, succeed_async_id)
 
     def interrupt(self, completions_id, retry=False):
         """
@@ -273,7 +272,7 @@ class ApiDirector(ApiDirectorBase):
                 - success (bool): True if the operation succeeded, False otherwise.
                 - message (str): A descriptive message about the operation result.
         """
-        return self._interrupt(completions_id, retry)
+        return self._base.interrupt(completions_id, retry)
 
     # Chat Completions API - Tools
 
@@ -297,7 +296,7 @@ class ApiDirector(ApiDirectorBase):
                 - tools (list[dict] | None): List of all tool definitions for the
                   completions node, or None if failed.
         """
-        return self._get_tools(completions_id, retry)
+        return self._base.get_tools(completions_id, retry)
 
     def set_tools(self, completions_id, tools, retry=False):
         """
@@ -319,7 +318,7 @@ class ApiDirector(ApiDirectorBase):
                 - success (bool): True if the operation succeeded, False otherwise.
                 - message (str): A descriptive message about the operation result.
         """
-        return self._set_tools(completions_id, tools, retry)
+        return self._base.set_tools(completions_id, tools, retry)
 
     def async_set_tools(self, completions_id, tools, retry=False, succeed_async_id=None):
         """
@@ -345,7 +344,7 @@ class ApiDirector(ApiDirectorBase):
                 - async_id (str | None): The ID for retrieving the async result later,
                   or None if failed.
         """
-        return self._async_set_tools(completions_id, tools, retry, succeed_async_id)
+        return self._base.async_set_tools(completions_id, tools, retry, succeed_async_id)
 
     # Chat Completions API - Parameters
 
@@ -369,7 +368,7 @@ class ApiDirector(ApiDirectorBase):
                 - parameters (dict | None): Dictionary mapping parameter names to their
                   current values, or None if failed.
         """
-        return self._get_parameters(completions_id, retry)
+        return self._base.get_parameters(completions_id, retry)
 
     def reset_parameters(self, completions_id, retry=False):
         """
@@ -389,7 +388,7 @@ class ApiDirector(ApiDirectorBase):
                 - success (bool): True if the operation succeeded, False otherwise.
                 - message (str): A descriptive message about the operation result.
         """
-        return self._reset_parameters(completions_id, retry)
+        return self._base.reset_parameters(completions_id, retry)
 
     def set_parameters(self, completions_id, parameter_names=None, parameter_values=None, retry=False):
         """
@@ -416,7 +415,7 @@ class ApiDirector(ApiDirectorBase):
                 - success (bool): True if the operation succeeded, False otherwise.
                 - message (str): A descriptive message about the operation result.
         """
-        return self._set_parameters(completions_id, parameter_names, parameter_values, retry)
+        return self._base.set_parameters(completions_id, parameter_names, parameter_values, retry)
 
     def async_set_parameters(self, completions_id, parameter_names=None, parameter_values=None, retry=False, succeed_async_id=None):
         """
@@ -445,7 +444,7 @@ class ApiDirector(ApiDirectorBase):
                 - async_id (str | None): The ID for retrieving the async result later,
                   or None if failed.
         """
-        return self._async_set_parameters(completions_id, parameter_names, parameter_values, retry, succeed_async_id)
+        return self._base.async_set_parameters(completions_id, parameter_names, parameter_values, retry, succeed_async_id)
 
     # Chat Completions API - Context
 
@@ -469,7 +468,7 @@ class ApiDirector(ApiDirectorBase):
                 - context (list[dict] | None): The full context as a list of messages
                   from first to last, or None if failed.
         """
-        return self._get_context(completions_id, retry)
+        return self._base.get_context(completions_id, retry)
 
     def set_context(self, completions_id, mode="reset", new_messages=None, index=0, indexing_last_to_first=True, retry=False):
         """
@@ -499,7 +498,7 @@ class ApiDirector(ApiDirectorBase):
                 - success (bool): True if the operation succeeded, False otherwise.
                 - message (str): A descriptive message about the operation result.
         """
-        return self._set_context(completions_id, mode, new_messages, index, indexing_last_to_first, retry)
+        return self._base.set_context(completions_id, mode, new_messages, index, indexing_last_to_first, retry)
 
     # Embeddings API
 
@@ -527,37 +526,7 @@ class ApiDirector(ApiDirectorBase):
                   embeddings as a single list (if input was str) or list of lists
                   (if input was list[str]), or None if failed.
         """
-        return self._get_embeddings(text, identifier, retry)
-
-    # Images API
-
-    def get_images(self, prompt, model=None, quality=None, style=None, size=None, retry=False):
-        """
-        Generate an image from a text prompt using the Images API.
-
-        Args:
-            prompt (str): The prompt for which an image is to be generated.
-            model (str | None, optional): The name of the model to use. Defaults to None.
-            quality (str | None, optional): Quality setting supported by the model.
-                Ignored if not available. Defaults to None.
-            style (str | None, optional): Style setting supported by the model.
-                Ignored if not available. Defaults to None.
-            size (str | None, optional): Size setting supported by the model.
-                Defaults to None.
-            retry (bool | int, optional): Whether to retry on failure. If True, retries
-                indefinitely. If an integer, specifies the number of retry attempts.
-                Defaults to False.
-
-        Raises:
-            AssertionError: If arguments are invalid.
-
-        Returns:
-            tuple[bool, str, str | None]: A tuple containing:
-                - success (bool): True if the operation succeeded, False otherwise.
-                - message (str): A descriptive message about the operation result.
-                - path (str | None): The path to the generated image file, or None if failed.
-        """
-        return self._get_images(prompt, model, quality, style, size, retry)
+        return self._base.get_embeddings(text, identifier, retry)
 
     # Audio APIs
 
@@ -589,13 +558,93 @@ class ApiDirector(ApiDirectorBase):
                 - message (str): A descriptive message about the operation result.
                 - path (str | None): The path to the generated speech file, or None if failed.
         """
-        return self._get_speech(text, model, voice, speed, instructions, retry)
+        return self._base.get_speech(text, model, voice, speed, instructions, retry)
 
     def get_transcription(self, path, model=None, temperature=0.0, language=None, prompt=None, response_format="json", retry=False):
-        return self._get_transcription(path, model, temperature, language, prompt, response_format, retry)
+        """
+        Retrieve a transcription from an audio file using the Transcription API.
+
+        Args:
+            path (str): The path to the audio file to transcribe.
+            model (str | None, optional): The name of the transcription model to use.
+                Use None to select a default model defined for some endpoints. Defaults to None.
+            temperature (float): Sampling temperature for the transcription process from 0.0 to 1.0.
+            language (str | None, optional): The language of the audio input as ISO 639.1
+                or None to auto-detect the language. Defaults to None.
+            prompt (str | None, optional): An optional text prompt to guide
+                the transcription or influence style. Defaults to None.
+            response_format (str): The desired response format in ["json", "verbose_json", "diarized_json", "text", "srt", "vtt"].
+            retry (bool | int, optional): Whether to retry on failure. If True, retries
+                indefinitely. If an integer, specifies the number of retry attempts.
+                Defaults to False.
+
+        Raises:
+            AssertionError: If any argument is invalid.
+
+        Returns:
+            tuple[bool, str, dict | str | None]: A tuple containing:
+                - success (bool): True if the operation succeeded, False otherwise.
+                - message (str): A descriptive message about the operation result.
+                - transcription (dict | str | None): The transcription result depending on `response_format`, or None if failed.
+        """
+        return self._base.get_transcription(path, model, temperature, language, prompt, response_format, retry)
 
     def get_translation(self, path, model=None, temperature=0.0, prompt=None, response_format="verbose_json", retry=False):
-        return self._get_translation(path, model, temperature, prompt, response_format, retry)
+        """
+        Retrieve a translation from an audio file using the Translation API.
+
+        Args:
+            path (str): The path to the audio file to translate.
+            model (str | None, optional): The name of the translation model to use.
+                Use None to select a default model defined for some endpoints. Defaults to None.
+            temperature (float): Sampling temperature for the translation process from 0.0 to 1.0.
+            prompt (str | None, optional): An optional text prompt to guide
+                the translation or influence style. Defaults to None.
+            response_format (str): The desired response format in ["json", "verbose_json", "text", "srt", "vtt"].
+            retry (bool | int, optional): Whether to retry on failure. If True, retries
+                indefinitely. If an integer, specifies the number of retry attempts.
+                Defaults to False.
+
+        Raises:
+            AssertionError: If any argument is invalid.
+
+        Returns:
+            tuple[bool, str, dict | str | None]: A tuple containing:
+                - success (bool): True if the operation succeeded, False otherwise.
+                - message (str): A descriptive message about the operation result.
+                - translation (dict | str | None): The translation result depending on `response_format`, or None if failed.
+        """
+        return self._base.get_translation(path, model, temperature, prompt, response_format, retry)
+
+    # Images API
+
+    def get_images(self, prompt, model=None, quality=None, style=None, size=None, retry=False):
+        """
+        Generate an image from a text prompt using the Images API.
+
+        Args:
+            prompt (str): The prompt for which an image is to be generated.
+            model (str | None, optional): The name of the model to use. Defaults to None.
+            quality (str | None, optional): Quality setting supported by the model.
+                Ignored if not available. Defaults to None.
+            style (str | None, optional): Style setting supported by the model.
+                Ignored if not available. Defaults to None.
+            size (str | None, optional): Size setting supported by the model.
+                Defaults to None.
+            retry (bool | int, optional): Whether to retry on failure. If True, retries
+                indefinitely. If an integer, specifies the number of retry attempts.
+                Defaults to False.
+
+        Raises:
+            AssertionError: If arguments are invalid.
+
+        Returns:
+            tuple[bool, str, str | None]: A tuple containing:
+                - success (bool): True if the operation succeeded, False otherwise.
+                - message (str): A descriptive message about the operation result.
+                - path (str | None): The path to the generated image file, or None if failed.
+        """
+        return self._base.get_images(prompt, model, quality, style, size, retry)
 
     # NimbRo Vision API
 
@@ -635,7 +684,7 @@ class ApiDirector(ApiDirectorBase):
                 - result (dict | list[dict] | None): Detection results as a single dict
                   (if single image) or list of dicts (if batch), or None if failed.
         """
-        return self._mmgroundingdino(image, prompts, model_id, model_flavor, min_confidence, nms_iou, overdetect_factor, retry)
+        return self._base.mmgroundingdino(image, prompts, model_id, model_flavor, min_confidence, nms_iou, overdetect_factor, retry)
 
     def sam2_realtime_update(self, image, prompts, model_id=0, model_flavor="large", retry=False):
         """
@@ -663,7 +712,7 @@ class ApiDirector(ApiDirectorBase):
                 - message (str): A descriptive message about the operation result.
                 - result (dict | None): Tracking update results, or None if failed.
         """
-        return self._sam2_realtime_update(image, prompts, model_id, model_flavor, retry)
+        return self._base.sam2_realtime_update(image, prompts, model_id, model_flavor, retry)
 
     def sam2_realtime_track(self, image, model_id=0, retry=False):
         """
@@ -686,7 +735,7 @@ class ApiDirector(ApiDirectorBase):
                 - result (dict | list[dict] | None): Tracking results as a single dict
                   (if single image) or list of dicts (if batch), or None if failed.
         """
-        return self._sam2_realtime_track(image, model_id, retry)
+        return self._base.sam2_realtime_track(image, model_id, retry)
 
     def dam(self, image, prompts, query="Describe the masked region in detail.", model_id=0, model_flavor="3B", temperature=0.2, top_p=0.5, num_beams=1, max_new_tokens=512, max_batch_size=32, retry=False):
         """
@@ -725,7 +774,7 @@ class ApiDirector(ApiDirectorBase):
                 - result (str | list[str] | None): Generated descriptions as a single
                   string (if single image) or list of strings (if batch), or None if failed.
         """
-        return self._dam(image, prompts, query, model_id, model_flavor, temperature, top_p, num_beams, max_new_tokens, max_batch_size, retry)
+        return self._base.dam(image, prompts, query, model_id, model_flavor, temperature, top_p, num_beams, max_new_tokens, max_batch_size, retry)
 
     def kosmos2(self, image, prompt="<grounding> Describe this image in detail:", model_id=0, model_flavor="patch14-224", num_beams=3, max_new_tokens=1024, max_batch_size=6, retry=False):
         """
@@ -759,7 +808,7 @@ class ApiDirector(ApiDirectorBase):
                 - captions (str | list[str] | None): Generated captions as a single
                   string (if single image) or list of strings (if batch), or None if failed.
         """
-        return self._kosmos2(image, prompt, model_id, model_flavor, num_beams, max_new_tokens, max_batch_size, retry)
+        return self._base.kosmos2(image, prompt, model_id, model_flavor, num_beams, max_new_tokens, max_batch_size, retry)
 
     def florence2(self, image, prompt, model_id=0, model_flavor="large", num_beams=3, max_new_tokens=1024, max_batch_size=6, retry=False):
         """
@@ -796,7 +845,7 @@ class ApiDirector(ApiDirectorBase):
                 - captions (str | list[str] | None): Generated captions as a single
                   string (if single image) or list of strings (if batch), or None if failed.
         """
-        return self._florence2(image, prompt, model_id, model_flavor, num_beams, max_new_tokens, max_batch_size, retry)
+        return self._base.florence2(image, prompt, model_id, model_flavor, num_beams, max_new_tokens, max_batch_size, retry)
 
     # General
 
@@ -831,7 +880,7 @@ class ApiDirector(ApiDirectorBase):
                 - usage (dict | None): The requested usage data as a parsed JSON
                   dictionary, or None if failed.
         """
-        return self._get_usage(api_type, api_endpoint, model_name, identifier, stamp_start, stamp_end, retry)
+        return self._base.get_usage(api_type, api_endpoint, model_name, identifier, stamp_start, stamp_end, retry)
 
     def async_get(self, async_id, mute_timeout_logging=False, timeout=None):
         """
@@ -854,7 +903,7 @@ class ApiDirector(ApiDirectorBase):
                 - result (tuple | None): The result tuple from the async operation,
                   or None if failed or timed out.
         """
-        return self._async_get(async_id, mute_timeout_logging, timeout)
+        return self._base.async_get(async_id, mute_timeout_logging, timeout)
 
     def get_async_status(self):
         """
@@ -865,4 +914,4 @@ class ApiDirector(ApiDirectorBase):
                 - success (bool): Always True for this operation.
                 - message (str): A descriptive message about the async status.
         """
-        return self._get_async_status()
+        return self._base.get_async_status()

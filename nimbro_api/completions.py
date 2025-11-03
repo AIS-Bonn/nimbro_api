@@ -1332,7 +1332,9 @@ class Completions(Node):
                 }
                 if self.parameters.model_reasoning_effort not in ["", "none"]:
                     data['reasoning_effort'] = self.parameters.model_reasoning_effort
-                if self.tools is not None:
+                if self.tools is None:
+                    del data['tools']
+                else:
                     data['tool_choice'] = self.tool_choice
                     if self.parameters.model_name[0] != "o":
                         data['parallel_tool_calls'] = self.parameters.max_tool_calls_per_completion > 1

@@ -17,7 +17,7 @@ setup(
     zip_safe=True,
     maintainer="Bastian Pätzold",
     maintainer_email="paetzold@ais.uni-bonn.de",
-    description="Integration of various APIs (Chat Completions, Embeddings, Images, Speech, NimbRoVision) with ROS2.",
+    description="Integration of various APIs (Chat Completions, Embeddings, Speech, Transcriptions, Translations, Images, NimbRo Vision Servers) with ROS2.",
     license_files=["LICENSE"],
     entry_points={
         "console_scripts": [

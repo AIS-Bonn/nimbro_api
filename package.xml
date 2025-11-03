@@ -3,7 +3,7 @@
 <package format="3">
   <name>nimbro_api</name>
   <version>1.1.0</version>
-  <description>"Integration of various APIs (Chat Completions, Embeddings, Images, Speech, NimbRoVision) with ROS2."</description>
+  <description>"Integration of various APIs (Chat Completions, Embeddings, Speech, Transcriptions, Translations, Images, NimbRo Vision Servers) with ROS2."</description>
   <author email="paetzold@ais.uni-bonn.de">Bastian Pätzold</author>
   <maintainer email="paetzold@ais.uni-bonn.de">Bastian Pätzold</maintainer>
   <license>BSD-3-Clause</license>

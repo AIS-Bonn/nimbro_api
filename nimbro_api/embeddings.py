@@ -13,8 +13,8 @@ from rclpy.node import Node
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
 from std_msgs.msg import String
 
-from nimbro_api_interfaces.srv import EmbeddingsGet
 from nimbro_api_interfaces.msg import Embedding
+from nimbro_api_interfaces.srv import EmbeddingsGet
 from nimbro_api.misc.common import validate_default_endpopints, filter_api_endpoint, validate_api_endpoint, retrieve_api_key, probe_models_api, validate_connection
 
 from nimbro_utils.lazy import start_and_spin_node, ParameterHandler, Logger, read_json, write_json, count_tokens, convert_stamp, log_lines, get_package_path
@@ -51,11 +51,18 @@ api_endpoints = {
         'key_value': "OPENAI_API_KEY"
     },
     'Mistral AI': {
-        'api_flavor': "mistral",
+        'api_flavor': "openai",
         'models_url': "https://api.mistral.ai/v1/models",
         'embeddings_url': "https://api.mistral.ai/v1/embeddings",
         'key_type': "environment",
         'key_value': "MISTRAL_API_KEY"
+    },
+    'OpenRouter': {
+        'api_flavor': "openai",
+        'models_url': "https://openrouter.ai/api/v1/models",
+        'embeddings_url': "https://openrouter.ai/api/v1/embeddings",
+        'key_type': "environment",
+        'key_value': "OPENROUTER_API_KEY"
     },
     'vLLM': {
         'api_flavor': "openai",
@@ -90,7 +97,7 @@ class Embeddings(Node):
         self.endpoint_keys_required = {'name', 'api_flavor', 'embeddings_url', 'key_type', 'key_value'}
         self.endpoint_keys_optional = {'models_url'}
         self.endpoint_key_type_values = ["environment", "plain"]
-        self.endpoint_api_flavor_values = ["openai", "mistral"]
+        self.endpoint_api_flavor_values = ["openai"]
         validate_default_endpopints.__get__(self)(api_endpoints)
 
         self.filter_api_endpoint = filter_api_endpoint.__get__(self)

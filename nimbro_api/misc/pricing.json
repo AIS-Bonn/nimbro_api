@@ -1,4 +1,9 @@
 {
+    "gpt-5-chat-latest": {
+        "tokens_input_uncached": 1.25,
+        "tokens_input_cached": 0.125,
+        "tokens_output": 10.00
+    },
     "gpt-5": {
         "tokens_input_uncached": 1.25,
         "tokens_input_cached": 0.125,
@@ -50,7 +55,7 @@
         "tokens_output": 8.00
     },
     "o3-2025-04-16": {
-        "tokens_input_uncached": 2.50,
+        "tokens_input_uncached": 2.00,
         "tokens_input_cached": 0.50,
         "tokens_output": 8.00
     },
@@ -98,6 +103,10 @@
         "tokens_input_uncached": 2.50,
         "tokens_input_cached": 1.25,
         "tokens_output": 10.00
+    },
+    "chatgpt-4o-latest": {
+        "tokens_input_uncached": 5.00,
+        "tokens_output": 15.00
     },
     "gpt-4o-2024-08-06": {
         "tokens_input_uncached": 2.50,
@@ -195,10 +204,6 @@
         "tokens_output": 15.00
     },
     "anthropic/claude-3.7-sonnet": {
-        "tokens_input_uncached": 3.00,
-        "tokens_output": 15.00
-    },
-    "anthropic/claude-3.7-sonnet:thinking": {
         "tokens_input_uncached": 3.00,
         "tokens_output": 15.00
     },
@@ -368,6 +373,10 @@
         "tokens_input_uncached": 0.07,
         "tokens_output": 0.28
     },
+    "qwen/qwen3-vl-32b-instruct": {
+        "tokens_input_uncached": 0.35,
+        "tokens_output": 1.10
+    },
     "qwen/qwen3-vl-235b-a22b-instruct": {
         "tokens_input_uncached": 0.30,
         "tokens_output": 2.80
@@ -429,6 +438,10 @@
         "tokens_output": 0.20
     },
 
+    "nvidia/nemotron-nano-12b-v2-vl": {
+        "tokens_input_uncached": 0.20,
+        "tokens_output": 0.60
+    },
     "allenai/molmo-7b-d": {
         "tokens_input_uncached": 0.10,
         "tokens_output": 0.20
@@ -579,6 +592,28 @@
         "tokens_input_uncached": 0.15
     },
     "mistral-embed": {
+        "tokens_input_uncached": 0.10
+    },
+
+    "qwen/qwen3-embedding-8b": {
+        "tokens_input_uncached": 0.025
+    },
+    "google/gemini-embedding-001": {
+        "tokens_input_uncached": 0.15
+    },
+    "openai/text-embedding-ada-002": {
+        "tokens_input_uncached": 0.10
+    },
+    "openai/text-embedding-3-small": {
+        "tokens_input_uncached": 0.02
+    },
+    "openai/text-embedding-3-large": {
+        "tokens_input_uncached": 0.13
+    },
+    "mistralai/codestral-embed-2505": {
+        "tokens_input_uncached": 0.15
+    },
+    "mistralai/mistral-embed-2312": {
         "tokens_input_uncached": 0.10
     }
 }

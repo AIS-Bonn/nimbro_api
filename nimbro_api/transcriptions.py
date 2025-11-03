@@ -217,7 +217,7 @@ class Transcriptions(Node):
 
         if self.parameters.api_endpoint == "OpenAI" and model == "":
             model = "gpt-4o-transcribe"
-            self._logger.debug(f"Using default OpenAI model '{model}'")
+            self._logger.debug(f"Using default model '{model}' for endpoint 'OpenAI'")
 
         temperature_range = [0.0, 1.0]
         if temperature < temperature_range[0] or temperature > temperature_range[1]:

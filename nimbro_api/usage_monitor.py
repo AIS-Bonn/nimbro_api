@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import re
 import json
 import time
 import datetime
@@ -114,6 +115,12 @@ class UsageMonitor(Node):
         self.cache = None
 
         self.warned_model_missing = []
+
+        self._ignored_suffixes = ["free", "beta", "extended", "exacto", "thinking", "online", "nitro", "floor"] # pricing is estimated using model name without suffix
+        self._suffix_re = re.compile(":" + "(?:" + "|".join(map(re.escape, self._ignored_suffixes)) + ")$")
+
+        self._ignore_prefixes = ["ais/"] # pricing is not estimated for model names with these prefixes
+        self._prefix_re = re.compile("^(?:" + "|".join(map(re.escape, self._ignore_prefixes)) + ")")
 
         qos_profile = rclpy.qos.QoSProfile(reliability=rclpy.qos.ReliabilityPolicy.RELIABLE, history=rclpy.qos.HistoryPolicy.KEEP_ALL, depth=100)
         self.sub_usage = self.create_subscription(
@@ -242,6 +249,12 @@ class UsageMonitor(Node):
 
         self.file_lock.release()
 
+    def normalize_model_name(self, model_name):
+        if model_name is None:
+            return model_name
+        else:
+            return self._suffix_re.sub("", model_name)
+
     def get_usage(self, request, response):
         success = True
 
@@ -305,6 +318,7 @@ class UsageMonitor(Node):
             if request.api_type == "" or request.api_type == api_type:
                 if api_type == 'completions' or api_type == 'embeddings':
                     for item in cache[api_type]:
+                        model_name_norm = self.normalize_model_name(item.get('model_name'))
 
                         # for compatibility with old cache
                         if 'api_flavor' in item and 'api_endpoint' not in item:
@@ -325,7 +339,7 @@ class UsageMonitor(Node):
                             if item.get('api_endpoint') != filter_api_endpoint:
                                 continue
                         if filter_model_name is not None:
-                            if item.get('model_name') != filter_model_name:
+                            if model_name_norm != filter_model_name:
                                 continue
                         if filter_identifier is not None:
                             if item.get('identifier') != filter_identifier:
@@ -343,10 +357,10 @@ class UsageMonitor(Node):
                                     continue
 
                         # dollars per item
-                        if item.get('model_name') in self.pricing:
-                            tokens_input_uncached_price = (item.get('tokens_input_uncached', 0.0) / 1000000) * self.pricing[item['model_name']].get('tokens_input_uncached', 0.0)
-                            tokens_input_cached_price = (item.get('tokens_input_cached', 0.0) / 1000000) * self.pricing[item['model_name']].get('tokens_input_cached', 0.0)
-                            tokens_output_price = (item.get('tokens_output', 0.0) / 1000000) * self.pricing[item['model_name']].get('tokens_output', 0.0)
+                        if model_name_norm in self.pricing:
+                            tokens_input_uncached_price = (item.get('tokens_input_uncached', 0.0) / 1000000) * self.pricing[model_name_norm].get('tokens_input_uncached', 0.0)
+                            tokens_input_cached_price = (item.get('tokens_input_cached', 0.0) / 1000000) * self.pricing[model_name_norm].get('tokens_input_cached', 0.0)
+                            tokens_output_price = (item.get('tokens_output', 0.0) / 1000000) * self.pricing[model_name_norm].get('tokens_output', 0.0)
                             if tokens_input_uncached_price > 0 or tokens_input_cached_price > 0:
                                 item['dollars_input'] = tokens_input_uncached_price + tokens_input_cached_price
                             if tokens_output_price > 0:
@@ -366,20 +380,20 @@ class UsageMonitor(Node):
                             usage[api_type]['total'] = {}
                         if item['api_endpoint'] not in usage[api_type]['total']:
                             usage[api_type]['total'][item['api_endpoint']] = {}
-                        if item['model_name'] not in usage[api_type]['total'][item['api_endpoint']]:
-                            usage[api_type]['total'][item['api_endpoint']][item['model_name']] = {}
+                        if model_name_norm not in usage[api_type]['total'][item['api_endpoint']]:
+                            usage[api_type]['total'][item['api_endpoint']][model_name_norm] = {}
 
-                        tokens_input_uncached = usage[api_type]['total'][item['api_endpoint']][item['model_name']].get('tokens_input_uncached', 0) + item.get('tokens_input_uncached', 0)
+                        tokens_input_uncached = usage[api_type]['total'][item['api_endpoint']][model_name_norm].get('tokens_input_uncached', 0) + item.get('tokens_input_uncached', 0)
                         if tokens_input_uncached > 0:
-                            usage[api_type]['total'][item['api_endpoint']][item['model_name']]['tokens_input_uncached'] = tokens_input_uncached
+                            usage[api_type]['total'][item['api_endpoint']][model_name_norm]['tokens_input_uncached'] = tokens_input_uncached
 
-                        tokens_input_cached = usage[api_type]['total'][item['api_endpoint']][item['model_name']].get('tokens_input_cached', 0) + item.get('tokens_input_cached', 0)
+                        tokens_input_cached = usage[api_type]['total'][item['api_endpoint']][model_name_norm].get('tokens_input_cached', 0) + item.get('tokens_input_cached', 0)
                         if tokens_input_cached > 0:
-                            usage[api_type]['total'][item['api_endpoint']][item['model_name']]['tokens_input_cached'] = tokens_input_cached
+                            usage[api_type]['total'][item['api_endpoint']][model_name_norm]['tokens_input_cached'] = tokens_input_cached
 
-                        tokens_output = usage[api_type]['total'][item['api_endpoint']][item['model_name']].get('tokens_output', 0) + item.get('tokens_output', 0)
+                        tokens_output = usage[api_type]['total'][item['api_endpoint']][model_name_norm].get('tokens_output', 0) + item.get('tokens_output', 0)
                         if tokens_output > 0:
-                            usage[api_type]['total'][item['api_endpoint']][item['model_name']]['tokens_output'] = tokens_output
+                            usage[api_type]['total'][item['api_endpoint']][model_name_norm]['tokens_output'] = tokens_output
 
         # dollars per api_endpoint and api_type
         for api_type in api_types:
@@ -388,41 +402,46 @@ class UsageMonitor(Node):
                 total_dollars_output = 0.0
                 if 'total' in usage[api_type]:
                     for api_endpoint in usage[api_type]['total']:
-                        for model_name in usage[api_type]['total'][api_endpoint]:
-                            if model_name in self.pricing:
-                                tokens_input_uncached = usage[api_type]['total'][api_endpoint][model_name].get('tokens_input_uncached', 0)
-                                tokens_input_cached = usage[api_type]['total'][api_endpoint][model_name].get('tokens_input_cached', 0)
-                                tokens_output = usage[api_type]['total'][api_endpoint][model_name].get('tokens_output', 0)
+                        model_name_norm = self.normalize_model_name(item.get('model_name'))
+                        for model_name_norm in usage[api_type]['total'][api_endpoint]:
+                            if model_name_norm in self.pricing:
+                                tokens_input_uncached = usage[api_type]['total'][api_endpoint][model_name_norm].get('tokens_input_uncached', 0)
+                                tokens_input_cached = usage[api_type]['total'][api_endpoint][model_name_norm].get('tokens_input_cached', 0)
+                                tokens_output = usage[api_type]['total'][api_endpoint][model_name_norm].get('tokens_output', 0)
 
                                 if tokens_input_uncached > 0:
-                                    if 'tokens_input_uncached' not in self.pricing[model_name]:
-                                        self._logger.warn(f"Cannot consider price of '{tokens_input_uncached}' uncached prompt tokens for model '{model_name}'")
+                                    if 'tokens_input_uncached' not in self.pricing[model_name_norm]:
+                                        self._logger.warn(f"Cannot consider price of '{tokens_input_uncached}' uncached prompt tokens for model '{model_name_norm}'")
                                 if tokens_input_cached > 0:
-                                    if 'tokens_input_cached' not in self.pricing[model_name]:
-                                        self._logger.warn(f"Cannot consider price of '{tokens_input_cached}' cached prompt tokens for model '{model_name}'")
+                                    if 'tokens_input_cached' not in self.pricing[model_name_norm]:
+                                        if 'tokens_input_uncached' in self.pricing[model_name_norm]:
+                                            self._logger.warn(f"Cannot consider price of '{tokens_input_cached}' cached prompt tokens for model '{model_name_norm}', using price of uncached prompt tokens")
+                                            tokens_input_uncached += tokens_input_cached
+                                        else:
+                                            self._logger.warn(f"Cannot consider price of '{tokens_input_cached}' cached prompt tokens for model '{model_name_norm}'")
                                 if tokens_output > 0:
-                                    if 'tokens_output' not in self.pricing[model_name]:
-                                        self._logger.warn(f"Cannot consider price of '{tokens_output}' completion tokens for model '{model_name}'")
+                                    if 'tokens_output' not in self.pricing[model_name_norm]:
+                                        self._logger.warn(f"Cannot consider price of '{tokens_output}' completion tokens for model '{model_name_norm}'")
 
-                                tokens_input_uncached_price = (tokens_input_uncached / 1000000) * self.pricing[model_name].get('tokens_input_uncached', 0.0)
-                                tokens_input_cached_price = (tokens_input_cached / 1000000) * self.pricing[model_name].get('tokens_input_cached', 0.0)
-                                tokens_output_price = (tokens_output / 1000000) * self.pricing[model_name].get('tokens_output', 0.0)
+                                tokens_input_uncached_price = (tokens_input_uncached / 1000000) * self.pricing[model_name_norm].get('tokens_input_uncached', 0.0)
+                                tokens_input_cached_price = (tokens_input_cached / 1000000) * self.pricing[model_name_norm].get('tokens_input_cached', 0.0)
+                                tokens_output_price = (tokens_output / 1000000) * self.pricing[model_name_norm].get('tokens_output', 0.0)
 
                                 dollars_input = tokens_input_uncached_price + tokens_input_cached_price
                                 if dollars_input > 0:
                                     total_dollars_input += dollars_input
-                                    usage[api_type]['total'][api_endpoint][model_name]['dollars_input'] = dollars_input
+                                    usage[api_type]['total'][api_endpoint][model_name_norm]['dollars_input'] = dollars_input
 
                                 if tokens_output_price > 0:
                                     total_dollars_output += tokens_output_price
-                                    usage[api_type]['total'][api_endpoint][model_name]['dollars_output'] = tokens_output_price
+                                    usage[api_type]['total'][api_endpoint][model_name_norm]['dollars_output'] = tokens_output_price
 
                                 if dollars_input > 0 and tokens_output_price > 0:
-                                    usage[api_type]['total'][api_endpoint][model_name]['dollars_total'] = dollars_input + tokens_output_price
+                                    usage[api_type]['total'][api_endpoint][model_name_norm]['dollars_total'] = dollars_input + tokens_output_price
 
-                            elif model_name not in self.warned_model_missing:
-                                self._logger.warn(f"Cannot estimate price for model '{model_name}'")
-                                self.warned_model_missing.append(model_name)
+                            elif not bool(self._prefix_re.match(model_name_norm)) and model_name_norm not in self.warned_model_missing:
+                                self._logger.warn(f"Cannot estimate price for model '{model_name_norm}'")
+                                self.warned_model_missing.append(model_name_norm)
 
                 if total_dollars_input > 0:
                     usage[api_type]['dollars_input'] = total_dollars_input

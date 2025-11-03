@@ -88,8 +88,8 @@ class CompletionsMultiplexer(Node):
         self.completions = {}
         for n in self.parameters.managed_nodes:
             if n == "":
-
                 continue
+
             self.completions[n] = {}
             self.completions[n]['locked'] = False
 

@@ -14,15 +14,15 @@ import rclpy
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
 import builtin_interfaces.msg
 
-from nimbro_api_interfaces.srv import NimbroVisionGet, EmbeddingsGet, ImagesGet, SpeechGet, TranscriptionsGet, TranslationsGet, UsageGet
 from nimbro_api_interfaces.srv import CompletionsManage, CompletionsStatusGet, CompletionsSettingsGet
 from nimbro_api_interfaces.srv import CompletionsPrompt, CompletionsInterrupt, CompletionsToolsGet, CompletionsToolsSet, CompletionsContextGet, CompletionsContextSet
+from nimbro_api_interfaces.srv import EmbeddingsGet, SpeechGet, TranscriptionsGet, TranslationsGet, ImagesGet, NimbroVisionGet, UsageGet
 
 from nimbro_utils.lazy import Logger, SelfShutdown, block_until_future_complete, assert_type_value, assert_keys, assert_log, update_dict, convert_stamp, read_json
 
 class ApiDirectorBase:
 
-    def __init__(self, node, settings=None):
+    def __init__(self, node, settings):
         # node
         assert_type_value(
             obj=node,
@@ -39,7 +39,7 @@ class ApiDirectorBase:
         })
 
         # settings
-        self._set_settings(settings=settings, keep_existing=False)
+        self.set_settings(settings=settings, keep_existing=False)
 
     # Internals
 
@@ -154,32 +154,16 @@ class ApiDirectorBase:
 
     # ApiDirectorBase Settings
 
-    def _get_settings(self):
-        """
-        Retrieve the current settings of the ApiDirectorBase.
-
-        Returns:
-            dict: A deep copy of the current settings.
-        """
+    def get_settings(self):
         return copy.deepcopy(self._settings)
 
-    def _set_settings(self, settings, keep_existing):
-        """
-        Update settings of the ApiDirector.
-
-        Args:
-            settings (dict): New settings to apply.
-            keep_existing (bool, optional): If True, merge with existing settings. Otherwise, replace current settings entirely. Defaults to True.
-
-        Raises:
-            AssertionError: If input arguments or provided settings are invalid.
-        """
+    def set_settings(self, settings, keep_existing):
         # parse arguments
         assert_type_value(obj=keep_existing, type_or_value=bool, name="argument 'keep_existing'", logger=self._logger)
         settings = update_dict(old_dict=self._settings if keep_existing else {}, new_dict=settings, key_name="setting", logger=self._logger, info=False, debug=False)
         default_settings_names = [
-            'severity', 'suffix', 'timeout_service', 'timeout_response', 'node_completions_multiplexer', 'node_embeddings', 'node_images',
-            'node_speech', 'node_transcriptions', 'node_translations', 'node_nimbro_vision', 'node_usage_monitor', 'voice_presets'
+            'severity', 'suffix', 'timeout_service', 'timeout_response', 'node_completions_multiplexer', 'node_embeddings', 'node_speech',
+            'node_transcriptions', 'node_translations', 'node_images', 'node_nimbro_vision', 'node_usage_monitor', 'voice_presets'
         ]
         assert_keys(obj=settings, keys=default_settings_names, mode="match", name="settings", logger=self._logger)
 
@@ -188,7 +172,7 @@ class ApiDirectorBase:
 
         # node names
         create_client = {}
-        for name in ['node_completions_multiplexer', 'node_embeddings', 'node_images', 'node_speech', 'node_transcriptions', 'node_translations', 'node_nimbro_vision', 'node_usage_monitor']:
+        for name in ['node_completions_multiplexer', 'node_embeddings', 'node_speech', 'node_transcriptions', 'node_translations', 'node_images', 'node_nimbro_vision', 'node_usage_monitor']:
             assert_type_value(obj=settings[name], type_or_value=str, name=f"setting '{name}'", logger=self._logger)
             settings[name] = "/" + re.sub(r'^/+|/+$', '', settings[name])
             create_client[name] = True
@@ -234,11 +218,6 @@ class ApiDirectorBase:
             else:
                 self._node.destroy_client(self._cli_get_embeddings)
 
-            if settings['node_images'] == self._settings['node_images']:
-                create_client['node_images'] = False
-            else:
-                self._node.destroy_client(self._cli_get_images)
-
             if settings['node_speech'] == self._settings['node_speech']:
                 create_client['node_speech'] = False
             else:
@@ -253,6 +232,11 @@ class ApiDirectorBase:
                 create_client['node_translations'] = False
             else:
                 self._node.destroy_client(self._cli_get_translations)
+
+            if settings['node_images'] == self._settings['node_images']:
+                create_client['node_images'] = False
+            else:
+                self._node.destroy_client(self._cli_get_images)
 
             if settings['node_nimbro_vision'] == self._settings['node_nimbro_vision']:
                 create_client['node_nimbro_vision'] = False
@@ -286,9 +270,6 @@ class ApiDirectorBase:
         if create_client['node_embeddings']:
             self._cli_get_embeddings = self._node.create_client(EmbeddingsGet, f"{settings['node_embeddings']}/get_embeddings", qos_profile=self._qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
 
-        if create_client['node_images']:
-            self._cli_get_images = self._node.create_client(ImagesGet, f"{settings['node_images']}/get_image", qos_profile=self._qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
-
         if create_client['node_speech']:
             self._cli_get_speech = self._node.create_client(SpeechGet, f"{settings['node_speech']}/get_speech", qos_profile=self._qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
 
@@ -297,6 +278,9 @@ class ApiDirectorBase:
 
         if create_client['node_translations']:
             self._cli_get_translations = self._node.create_client(TranslationsGet, f"{settings['node_translations']}/get_translation", qos_profile=self._qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
+
+        if create_client['node_images']:
+            self._cli_get_images = self._node.create_client(ImagesGet, f"{settings['node_images']}/get_image", qos_profile=self._qos_profile, callback_group=MutuallyExclusiveCallbackGroup())
 
         if create_client['node_nimbro_vision']:
             self._cli_mmgroundingdino = self._node.create_client(NimbroVisionGet, f"{settings['node_nimbro_vision']}/mmgroundingdino", qos_profile=self._qos_profile, callback_group=ReentrantCallbackGroup())
@@ -313,7 +297,7 @@ class ApiDirectorBase:
 
     # Chat Completions API - Management
 
-    def _get_status(self, retry):
+    def get_status(self, retry):
         prefix = "completions.get_status"
 
         success, message, response = self._client_wrapper(
@@ -334,7 +318,7 @@ class ApiDirectorBase:
 
         return self._log_return(prefix, success, message, completions_ids, acquired)
 
-    def _acquire(self, reset_parameters, reset_context, retry):
+    def acquire(self, reset_parameters, reset_context, retry):
         assert_type_value(obj=reset_parameters, type_or_value=bool, name="argument 'reset_parameters'", logger=self._logger)
         assert_type_value(obj=reset_context, type_or_value=bool, name="argument 'reset_context'", logger=self._logger)
 
@@ -363,14 +347,14 @@ class ApiDirectorBase:
                 success = success and success_params
                 message = (message + " " + message_params).strip()
             if reset_context:
-                success_msg, message_msg = self.set_context(completions_id, mode="reset", new_messages=[], retry=retry)
+                success_msg, message_msg = self.set_context(completions_id, mode="reset", new_messages=[], index=0, indexing_last_to_first=True, retry=retry)
                 success = success and success_msg
                 message = (message + " " + message_msg).strip()
             return success, message, completions_id
         else:
             return self._log_return(prefix, False, message, None)
 
-    def _duplicate(self, completions_id, retry):
+    def duplicate(self, completions_id, retry):
         success, message, new_completions_id = self.acquire(reset_parameters=True, reset_context=True, retry=retry)
         if success:
             success, message, parameters = self.get_parameters(completions_id=completions_id, retry=retry)
@@ -383,7 +367,7 @@ class ApiDirectorBase:
                         if success:
                             success, message, context = self.get_context(completions_id=completions_id, retry=retry)
                             if success:
-                                success, message = self.set_context(completions_id=new_completions_id, mode="reset", new_messages=context, retry=retry)
+                                success, message = self.set_context(completions_id=new_completions_id, mode="reset", new_messages=context, index=0, indexing_last_to_first=True, retry=retry)
         if success:
             message = f"Duplicated completions node '{completions_id}'."
         else:
@@ -391,7 +375,7 @@ class ApiDirectorBase:
 
         return self._log_return(f"{new_completions_id}.duplicate", success, message, new_completions_id)
 
-    def _release(self, completions_id, retry):
+    def release(self, completions_id, retry):
         assert_type_value(obj=completions_id, type_or_value=[None, str], name="argument 'completions_id'", logger=self._logger)
 
         request = CompletionsManage.Request()
@@ -418,7 +402,7 @@ class ApiDirectorBase:
 
     # Chat Completions API - Parameters
 
-    def _get_parameters(self, completions_id, retry):
+    def get_parameters(self, completions_id, retry):
         assert_type_value(obj=completions_id, type_or_value=str, name="argument 'completions_id'", logger=self._logger)
 
         request = CompletionsSettingsGet.Request()
@@ -442,10 +426,10 @@ class ApiDirectorBase:
 
         return self._log_return(prefix, success, message, parameters)
 
-    def _reset_parameters(self, completions_id, retry):
+    def reset_parameters(self, completions_id, retry):
         return self.set_parameters(completions_id=completions_id, parameter_names=[], parameter_values=[], retry=retry)
 
-    def _set_parameters(self, completions_id, parameter_names, parameter_values, retry):
+    def set_parameters(self, completions_id, parameter_names, parameter_values, retry):
         assert_type_value(obj=completions_id, type_or_value=str, name="argument 'completions_id'", logger=self._logger)
         assert_type_value(obj=parameter_names, type_or_value=[str, list, None], name="argument 'parameter_names'", logger=self._logger)
         assert_type_value(obj=parameter_values, type_or_value=[str, list, None], name="argument 'parameter_values' (correct types are inferred from str)", logger=self._logger)
@@ -487,7 +471,7 @@ class ApiDirectorBase:
 
         return self._log_return(prefix, success, message)
 
-    def _async_set_parameters(self, completions_id, parameter_names, parameter_values, retry, succeed_async_id):
+    def async_set_parameters(self, completions_id, parameter_names, parameter_values, retry, succeed_async_id):
         assert_type_value(obj=completions_id, type_or_value=str, name="argument 'completions_id'", logger=self._logger)
         assert_type_value(obj=parameter_names, type_or_value=[str, list, None], name="argument 'parameter_names'", logger=self._logger)
         assert_type_value(obj=parameter_values, type_or_value=[str, list, None], name="argument 'parameter_values' (correct types are inferred from str)", logger=self._logger)
@@ -512,7 +496,7 @@ class ApiDirectorBase:
 
     # Chat Completions API - Prompting
 
-    def _prompt(self, completions_id, text, role, reset_context, tool_response_id, response_type, identifier, retry):
+    def prompt(self, completions_id, text, role, reset_context, tool_response_id, response_type, identifier, retry):
         assert_type_value(obj=completions_id, type_or_value=str, name="argument 'completions_id'", logger=self._logger)
         assert_type_value(obj=text, type_or_value=[str, dict, list], name="argument 'text'", logger=self._logger)
         assert_type_value(obj=role, type_or_value=str, name="argument 'role'", logger=self._logger)
@@ -554,7 +538,7 @@ class ApiDirectorBase:
 
         return self._log_return(prefix, success, message, completion)
 
-    def _async_prompt(self, completions_id, text, role, reset_context, tool_response_id, response_type, identifier, retry, succeed_async_id):
+    def async_prompt(self, completions_id, text, role, reset_context, tool_response_id, response_type, identifier, retry, succeed_async_id):
         assert_type_value(obj=completions_id, type_or_value=str, name="argument 'completions_id'", logger=self._logger)
         assert_type_value(obj=text, type_or_value=[str, dict, list], name="argument 'text'", logger=self._logger)
         assert_type_value(obj=role, type_or_value=str, name="argument 'role'", logger=self._logger)
@@ -581,7 +565,7 @@ class ApiDirectorBase:
 
         return self._log_return(f"{completions_id}.prompt", True, f"Registered asynchronous thread '{async_id}'.", async_id)
 
-    def _interrupt(self, completions_id, retry):
+    def interrupt(self, completions_id, retry):
         assert_type_value(obj=completions_id, type_or_value=str, name="argument 'completions_id'", logger=self._logger)
 
         request = CompletionsInterrupt.Request()
@@ -602,7 +586,7 @@ class ApiDirectorBase:
 
     # Chat Completions API - Tools
 
-    def _get_tools(self, completions_id, retry):
+    def get_tools(self, completions_id, retry):
         assert_type_value(obj=completions_id, type_or_value=str, name="argument 'completions_id'", logger=self._logger)
 
         request = CompletionsToolsGet.Request()
@@ -626,7 +610,7 @@ class ApiDirectorBase:
 
         return self._log_return(prefix, success, message, tools)
 
-    def _set_tools(self, completions_id, tools, retry):
+    def set_tools(self, completions_id, tools, retry):
         assert_type_value(obj=completions_id, type_or_value=str, name="argument 'completions_id'", logger=self._logger)
         assert_type_value(obj=tools, type_or_value=[None, list], name="argument 'tools'", logger=self._logger)
 
@@ -658,7 +642,7 @@ class ApiDirectorBase:
 
         return self._log_return(prefix, success, message)
 
-    def _async_set_tools(self, completions_id, tools, retry, succeed_async_id):
+    def async_set_tools(self, completions_id, tools, retry, succeed_async_id):
         assert_type_value(obj=completions_id, type_or_value=str, name="argument 'completions_id'", logger=self._logger)
         assert_type_value(obj=tools, type_or_value=[None, list], name="argument 'tools'", logger=self._logger)
         assert_type_value(obj=retry, type_or_value=[int, bool], name="argument 'retry'", logger=self._logger)
@@ -682,7 +666,7 @@ class ApiDirectorBase:
 
     # Chat Completions API - Context
 
-    def _get_context(self, completions_id, retry):
+    def get_context(self, completions_id, retry):
         assert_type_value(obj=completions_id, type_or_value=str, name="argument 'completions_id'", logger=self._logger)
 
         request = CompletionsContextGet.Request()
@@ -706,7 +690,7 @@ class ApiDirectorBase:
 
         return self._log_return(prefix, success, message, context)
 
-    def _set_context(self, completions_id, mode, new_messages, index, indexing_last_to_first, retry):
+    def set_context(self, completions_id, mode, new_messages, index, indexing_last_to_first, retry):
         assert_type_value(obj=completions_id, type_or_value=str, name="argument 'completions_id'", logger=self._logger)
         assert_type_value(obj=mode, type_or_value=str, name="argument 'mode'", logger=self._logger)
         assert_type_value(obj=new_messages, type_or_value=[None, list], name="argument 'new_messages'", logger=self._logger)
@@ -746,7 +730,7 @@ class ApiDirectorBase:
 
     # Embeddings API
 
-    def _get_embeddings(self, text, identifier, retry):
+    def get_embeddings(self, text, identifier, retry):
         assert_type_value(obj=text, type_or_value=[str, list], name="argument 'text'", logger=self._logger)
         assert_type_value(obj=identifier, type_or_value=[None, str], name="argument 'identifier'", logger=self._logger)
 
@@ -781,43 +765,9 @@ class ApiDirectorBase:
 
         return self._log_return(prefix, success, message, embeddings)
 
-    # Images API
-
-    def _get_images(self, prompt, model, quality, style, size, retry):
-        assert_type_value(obj=prompt, type_or_value=str, name="argument 'prompt'", logger=self._logger)
-        assert_type_value(obj=model, type_or_value=[None, str], name="argument 'model'", logger=self._logger)
-        assert_type_value(obj=quality, type_or_value=[None, str], name="argument 'quality'", logger=self._logger)
-        assert_type_value(obj=style, type_or_value=[None, str], name="argument 'style'", logger=self._logger)
-        assert_type_value(obj=size, type_or_value=[None, str], name="argument 'size'", logger=self._logger)
-
-        request = ImagesGet.Request()
-        request.prompt = prompt
-        request.model = "" if model is None else model
-        request.quality = "" if quality is None else quality
-        request.style = "" if style is None else style
-        request.size = "" if size is None else size
-
-        prefix = "images"
-
-        success, message, response = self._client_wrapper(
-            prefix=prefix,
-            client=self._cli_get_images,
-            request=request,
-            timeout_service=self._settings['timeout_service'],
-            timeout_response=self._settings['timeout_response'],
-            retry=retry
-        )
-
-        if success:
-            path = response.path
-        else:
-            path = None
-
-        return self._log_return(prefix, success, message, path)
-
     # Audio APIs
 
-    def _get_speech(self, text, model, voice, speed, instructions, retry):
+    def get_speech(self, text, model, voice, speed, instructions, retry):
         assert_type_value(obj=text, type_or_value=str, name="argument 'text'", logger=self._logger)
         assert_type_value(obj=model, type_or_value=[None, str], name="argument 'model'", logger=self._logger)
         assert_type_value(obj=voice, type_or_value=[None, str], name="argument 'voice'", logger=self._logger)
@@ -858,7 +808,7 @@ class ApiDirectorBase:
 
         return self._log_return(prefix, success, message, path)
 
-    def _get_transcription(self, path, model, temperature, language, prompt, response_format, retry):
+    def get_transcription(self, path, model, temperature, language, prompt, response_format, retry):
         assert_type_value(obj=path, type_or_value=str, name="argument 'path'", logger=self._logger)
         assert_type_value(obj=model, type_or_value=[None, str], name="argument 'model'", logger=self._logger)
         assert_type_value(obj=temperature, type_or_value=float, name="argument 'temperature'", logger=self._logger)
@@ -894,7 +844,7 @@ class ApiDirectorBase:
 
         return self._log_return(prefix, success, message, transcription)
 
-    def _get_translation(self, path, model, temperature, prompt, response_format, retry):
+    def get_translation(self, path, model, temperature, prompt, response_format, retry):
         assert_type_value(obj=path, type_or_value=str, name="argument 'path'", logger=self._logger)
         assert_type_value(obj=model, type_or_value=[None, str], name="argument 'model'", logger=self._logger)
         assert_type_value(obj=temperature, type_or_value=float, name="argument 'temperature'", logger=self._logger)
@@ -928,9 +878,43 @@ class ApiDirectorBase:
 
         return self._log_return(prefix, success, message, translation)
 
+    # Images API
+
+    def get_images(self, prompt, model, quality, style, size, retry):
+        assert_type_value(obj=prompt, type_or_value=str, name="argument 'prompt'", logger=self._logger)
+        assert_type_value(obj=model, type_or_value=[None, str], name="argument 'model'", logger=self._logger)
+        assert_type_value(obj=quality, type_or_value=[None, str], name="argument 'quality'", logger=self._logger)
+        assert_type_value(obj=style, type_or_value=[None, str], name="argument 'style'", logger=self._logger)
+        assert_type_value(obj=size, type_or_value=[None, str], name="argument 'size'", logger=self._logger)
+
+        request = ImagesGet.Request()
+        request.prompt = prompt
+        request.model = "" if model is None else model
+        request.quality = "" if quality is None else quality
+        request.style = "" if style is None else style
+        request.size = "" if size is None else size
+
+        prefix = "images"
+
+        success, message, response = self._client_wrapper(
+            prefix=prefix,
+            client=self._cli_get_images,
+            request=request,
+            timeout_service=self._settings['timeout_service'],
+            timeout_response=self._settings['timeout_response'],
+            retry=retry
+        )
+
+        if success:
+            path = response.path
+        else:
+            path = None
+
+        return self._log_return(prefix, success, message, path)
+
     # NimbRo Vision API
 
-    def _mmgroundingdino(self, image, prompts, model_id, model_flavor, min_confidence, nms_iou, overdetect_factor, retry):
+    def mmgroundingdino(self, image, prompts, model_id, model_flavor, min_confidence, nms_iou, overdetect_factor, retry):
         assert_type_value(obj=image, type_or_value=[list, str], name="argument 'image'", logger=self._logger)
         assert_type_value(obj=prompts, type_or_value=list, name="argument 'prompt'", logger=self._logger)
         assert_type_value(obj=model_id, type_or_value=int, name="argument 'model_id'", logger=self._logger)
@@ -1065,7 +1049,7 @@ class ApiDirectorBase:
 
         return self._log_return(prefix, success, message, result)
 
-    def _sam2_realtime_update(self, image, prompts, model_id, model_flavor, retry):
+    def sam2_realtime_update(self, image, prompts, model_id, model_flavor, retry):
         assert_type_value(obj=image, type_or_value=str, name="argument 'image'", logger=self._logger)
         assert_type_value(obj=prompts, type_or_value=list, name="argument 'prompts'", logger=self._logger)
         assert_type_value(obj=model_id, type_or_value=int, name="argument 'model_id'", logger=self._logger)
@@ -1105,7 +1089,7 @@ class ApiDirectorBase:
 
         return self._log_return(prefix, success, message, result)
 
-    def _sam2_realtime_track(self, image, model_id, retry):
+    def sam2_realtime_track(self, image, model_id, retry):
         assert_type_value(obj=image, type_or_value=[list, str], name="argument 'image'", logger=self._logger)
         assert_type_value(obj=model_id, type_or_value=int, name="argument 'model_id'", logger=self._logger)
 
@@ -1144,7 +1128,7 @@ class ApiDirectorBase:
 
         return self._log_return(prefix, success, message, result)
 
-    def _dam(self, image, prompts, query, model_id, model_flavor, temperature, top_p, num_beams, max_new_tokens, max_batch_size, retry):
+    def dam(self, image, prompts, query, model_id, model_flavor, temperature, top_p, num_beams, max_new_tokens, max_batch_size, retry):
         assert_type_value(obj=image, type_or_value=[list, str], name="argument 'image'", logger=self._logger)
         assert_type_value(obj=prompts, type_or_value=[list, dict], name="argument 'prompt'", logger=self._logger)
         assert_type_value(obj=query, type_or_value=[list, str], name="argument 'query'", logger=self._logger)
@@ -1288,7 +1272,7 @@ class ApiDirectorBase:
 
         return self._log_return(prefix, success, message, result)
 
-    def _kosmos2(self, image, prompt, model_id, model_flavor, num_beams, max_new_tokens, max_batch_size, retry):
+    def kosmos2(self, image, prompt, model_id, model_flavor, num_beams, max_new_tokens, max_batch_size, retry):
         assert_type_value(obj=image, type_or_value=[list, str], name="argument 'image'", logger=self._logger)
         assert_type_value(obj=prompt, type_or_value=[list, str], name="argument 'prompt'", logger=self._logger)
         assert_type_value(obj=model_id, type_or_value=int, name="argument 'model_id'", logger=self._logger)
@@ -1385,7 +1369,7 @@ class ApiDirectorBase:
 
         return self._log_return(prefix, success, message, detections, captions)
 
-    def _florence2(self, image, prompt, model_id, model_flavor, num_beams, max_new_tokens, max_batch_size, retry):
+    def florence2(self, image, prompt, model_id, model_flavor, num_beams, max_new_tokens, max_batch_size, retry):
         assert_type_value(obj=image, type_or_value=[list, str], name="argument 'image'", logger=self._logger)
         assert_type_value(obj=prompt, type_or_value=[list, dict], name="argument 'prompt'", logger=self._logger)
         assert_type_value(obj=model_id, type_or_value=int, name="argument 'model_id'", logger=self._logger)
@@ -1484,7 +1468,7 @@ class ApiDirectorBase:
 
     # General
 
-    def _get_usage(self, api_type, api_endpoint, model_name, identifier, stamp_start, stamp_end, retry):
+    def get_usage(self, api_type, api_endpoint, model_name, identifier, stamp_start, stamp_end, retry):
         assert_type_value(obj=api_type, type_or_value=[None, str], name="argument 'api_type'", logger=self._logger)
         assert_type_value(obj=api_endpoint, type_or_value=[None, str], name="argument 'api_endpoint'", logger=self._logger)
         assert_type_value(obj=model_name, type_or_value=[None, str], name="argument 'model_name'", logger=self._logger)
@@ -1528,7 +1512,7 @@ class ApiDirectorBase:
 
         return self._log_return(prefix, success, message, usage)
 
-    def _async_get(self, async_id, mute_timeout_logging, timeout):
+    def async_get(self, async_id, mute_timeout_logging, timeout):
         assert_type_value(obj=async_id, type_or_value=str, name="argument 'async_id'", logger=self._logger)
         assert_log(len(self._async_responses) > 0, "Cannot retrieve asynchronous response because no asynchronous threads have been started.", self._logger)
         assert_log(async_id in self._async_responses, f"Cannot retrieve asynchronous response for unknown ID '{async_id}'. Known IDs: {list(self._async_responses.keys())}", self._logger)
@@ -1566,7 +1550,7 @@ class ApiDirectorBase:
 
         return self._log_return(prefix, True, message, self._async_responses[async_id]['response'])
 
-    def _get_async_status(self):
+    def get_async_status(self):
         if len(self._async_responses) == 0:
             self._logger.info("No asynchronous threads have been registered.")
         else:
