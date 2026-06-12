@@ -243,7 +243,7 @@ class Transcriptions(Node):
         success, message, api_key = self.retrieve_api_key()
         if not success:
             self._logger.error(message)
-            return False, message, None, None
+            return False, message, None
 
         # use API
         success, message, transcription = self.transcriptions_post(

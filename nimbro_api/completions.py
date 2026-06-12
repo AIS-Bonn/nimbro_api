@@ -38,7 +38,7 @@ log_chunks = False
 
 probe_api_connection = True
 api_endpoint = "OpenRouter"
-model_name = "google/gemini-2.5-flash"
+model_name = "google/gemini-3.5-flash"
 
 model_temperature = 1.0
 model_top_p = 1.0
@@ -254,7 +254,7 @@ class Completions(Node):
             range_step=0.0
         )
 
-        valid_values = ["", "none", "low", "medium", "high"]
+        valid_values = ["", "none", "minimal", "low", "medium", "high"]
         self.parameter_handler.declare(
             name="model_reasoning_effort",
             dtype=str,
@@ -419,7 +419,7 @@ class Completions(Node):
             value, message = self.filter_api_endpoint(name, value, self.parameters.log_line_length)
 
         elif name == "model_reasoning_effort":
-            valid_values = ["", "none", "low", "medium", "high"]
+            valid_values = ["", "none", "minimal", "low", "medium", "high"]
             if value not in valid_values:
                 message = f"Reasoning effort '{value}' is not in list of unsupported values {valid_values}."
                 value = None
@@ -928,9 +928,9 @@ class Completions(Node):
                         insert_3 = f".{j}" if len(message['content']) > 1 else ""
                         if content['type'] == "image_url":
                             messages_fmt.append(f"{i}{insert_3} - {message['role']}: '{'<IMAGE>' if len(content['image_url']['url']) > (self.parameters.log_line_length - len(message['role']) - 7) else content['image_url']['url']}' (detail: '{content['image_url'].get('detail', '')}')")
-                        if content['type'] == "input_audio":
+                        elif content['type'] == "input_audio":
                             messages_fmt.append(f"{i}{insert_3} - {message['role']}: '{'<AUDIO>' if len(content['input_audio']['data']) > (self.parameters.log_line_length - len(message['role']) - 7) else content['input_audio']['data']}' (format: '{content['input_audio']['format']}')")
-                        if content['type'] == "file":
+                        elif content['type'] == "file":
                             messages_fmt.append(f"{i}{insert_3} - {message['role']}: '{'<FILE>' if len(content['file']['data_url']) > (self.parameters.log_line_length - len(message['role']) - 7) else content['file']['data_url']}' (name: '{content['file']['filename']}')")
                         else:
                             messages_fmt.append(f"{i}{insert_3} - {message['role']}: '{content['text']}'".replace("\n", "\\n"))
@@ -1042,7 +1042,6 @@ class Completions(Node):
                         break
 
                     elif chunk['code'] == "COMPLETION":
-                        assert isinstance(chunk['content'], dict), f"Expected chunk content '{chunk['content']}' to be of type 'dict' instead of '{type(chunk['content']).__name__}'."
                         reasoning, text, tool_calls = self.parse_completion_chunk(chunk['content'], reasoning, text, tool_calls)
 
                     elif chunk['code'] == "USAGE":
@@ -1327,10 +1326,11 @@ class Completions(Node):
                     'presence_penalty': self.parameters.model_presence_penalty,
                     'frequency_penalty': self.parameters.model_frequency_penalty,
                     'response_format': self.response_format,
+                    # 'verbosity': "medium",
                     'n': 1,
                     'stream': self.parameters.stream_completion
                 }
-                if self.parameters.model_reasoning_effort not in ["", "none"]:
+                if self.parameters.model_reasoning_effort != "":
                     data['reasoning_effort'] = self.parameters.model_reasoning_effort
                 if self.tools is None:
                     del data['tools']
@@ -1339,7 +1339,7 @@ class Completions(Node):
                     if self.parameters.model_name[0] != "o":
                         data['parallel_tool_calls'] = self.parameters.max_tool_calls_per_completion > 1
                 if self.parameters.stream_completion is True:
-                    data['stream_options'] = {'include_usage': True}
+                    data['stream_options'] = {'include_usage': True, 'include_obfuscation': False}
 
             elif self.api_endpoints[self.parameters.api_endpoint]['api_flavor'] == "mistral":
                 data = {
@@ -1354,6 +1354,10 @@ class Completions(Node):
                     'n': 1,
                     'stream': self.parameters.stream_completion
                 }
+                if self.parameters.model_reasoning_effort != "":
+                    data['reasoning_effort'] = self.parameters.model_reasoning_effort
+                if self.tools is not None:
+                    data['parallel_tool_calls'] = self.parameters.max_tool_calls_per_completion > 1
 
             elif self.api_endpoints[self.parameters.api_endpoint]['api_flavor'] == "openrouter":
                 data = {
@@ -1369,7 +1373,7 @@ class Completions(Node):
                     'n': 1,
                     'stream': self.parameters.stream_completion
                 }
-                if self.parameters.model_reasoning_effort not in ["", "none"]:
+                if self.parameters.model_reasoning_effort != "":
                     data['reasoning'] = {
                         'effort': self.parameters.model_reasoning_effort,
                         'exclude': False
@@ -1662,6 +1666,8 @@ class Completions(Node):
         return usage
 
     def parse_completion_chunk(self, chunk, reasoning, text, tool_calls):
+        assert isinstance(chunk, dict), f"Expected chunk content '{chunk}' to be of type 'dict' but got '{type(chunk).__name__}'."
+
         if self.parameters.log_chunks:
             log_lines(f"Received chunk:\n{json.dumps(chunk, indent=4)}", line_length=self.parameters.log_line_length, line_highlight="| ", block_format=False, allow_empty_lines=True, logger=self._logger, severity=10)
 
@@ -1669,54 +1675,88 @@ class Completions(Node):
         for key in ['reasoning', 'reasoning_content']:
             if chunk.get(key) not in ["", None]:
                 if self.parameters.log_chunks:
-                    self._logger.debug(f"Chunk contains '{key}'")
+                    self._logger.debug(f"Chunk contains '{key}'.")
                 if not isinstance(chunk[key], str):
-                    raise AssertionError(f"Expected value of key '{key}' to be of type 'str' instead of '{type(chunk['key']).__name__}': {chunk}")
+                    raise AssertionError(f"Expected value of key '{key}' to be of type 'str' but got '{type(chunk['key']).__name__}': {chunk}")
                 reasoning += chunk[key]
 
         # chunk contains text
         if chunk.get('content') not in ["", None]:
             if self.parameters.log_chunks:
-                self._logger.debug("Chunk contains 'content'")
-            if not isinstance(chunk['content'], str):
-                raise AssertionError(f"Expected value of key 'content' to be of type 'str' instead of '{type(chunk['content']).__name__}': {chunk}")
-            text += chunk['content']
+                self._logger.debug("Chunk contains 'content'.")
 
-        # chunk contains tool call
+            if isinstance(chunk['content'], list):
+                # this entire block is required solely for Mistral
+                for item in chunk['content']:
+                    if not isinstance(item, dict):
+                        raise AssertionError(f"Expected type of item in value of key 'content' to be of type 'dict' but got '{type(item).__name__}': {chunk}")
+                    if 'type' not in item:
+                        raise AssertionError(f"Expected item in value of key 'content' to contain the key 'type': {chunk}")
+                    if item['type'] not in ["thinking", "text"]:
+                        raise AssertionError(f"Expected value of key 'type' in item of value of key 'content' to be 'thinking' or 'text': {chunk}")
+                    if item['type'] == "text":
+                        if 'text' not in item:
+                            raise AssertionError(f"Expected item in value of key 'content' with type 'text' to contain the key 'text': {chunk}")
+                        if not isinstance(item['text'], str):
+                            raise AssertionError(f"Expected value of key 'text' in item of value of key 'content' to be of type 'str' but got '{type(item['text']).__name__}': {chunk}")
+                        text += item['text']
+                    else:
+                        if 'thinking' not in item:
+                            raise AssertionError(f"Expected item in value of key 'content' with type 'thinking' to contain the key 'thinking': {chunk}")
+                        if not isinstance(item['thinking'], list):
+                            raise AssertionError(f"Expected value of key 'thinking' in item of value of key 'content' to be of type 'list' but got '{type(item['thinking']).__name__}': {chunk}")
+                        for sub_item in item['thinking']:
+                            if not isinstance(sub_item, dict):
+                                raise AssertionError(f"Expected type of item in value of key 'thinking' in item of value of key 'content' to be of type 'dict' but got '{type(sub_item).__name__}': {chunk}")
+                            if 'type' not in sub_item:
+                                raise AssertionError(f"Expected item in value of key 'thinking' in value of key 'content' to contain the key 'type': {chunk}")
+                            if sub_item['type'] != "text":
+                                raise AssertionError(f"Expected value of key 'type' in value of key 'thinking' in item of value of key 'content' to be 'thinking' or 'text': {chunk}")
+                            if 'text' not in sub_item:
+                                raise AssertionError(f"Expected item in value of key 'thinking' in value of key 'content' with type 'text' to contain the key 'text': {chunk}")
+                            if not isinstance(sub_item['text'], str):
+                                raise AssertionError(f"Expected value of key 'text' in value of key 'thinking' in item of value of key 'content' to be of type 'str' but got '{type(sub_item['text']).__name__}': {chunk}")
+                            reasoning += sub_item['text']
+            elif not isinstance(chunk['content'], str):
+                raise AssertionError(f"Expected value of key 'content' to be of type 'str' but got '{type(chunk['content']).__name__}': {chunk}")
+            else:
+                text += chunk['content']
+
+        # chunk contains tool-call
         if chunk.get('tool_calls') not in [[], "", None]:
             if self.parameters.log_chunks:
-                self._logger.debug("Chunk contains 'tool_calls'")
+                self._logger.debug("Chunk contains 'tool_calls'.")
             if not isinstance(chunk['tool_calls'], list):
-                raise AssertionError(f"Expected value of key 'tool_calls' to be of type 'list' instead of '{type(chunk['tool_calls']).__name__}': {chunk}")
+                raise AssertionError(f"Expected value of key 'tool_calls' to be of type 'list' but got '{type(chunk['tool_calls']).__name__}': {chunk}")
             if self.parameters.log_chunks:
-                self._logger.debug(f"Chunk contains '{len(chunk['tool_calls'])}' toll call{'' if len(chunk['tool_calls']) == 1 else 's'}")
+                self._logger.debug(f"Chunk contains '{len(chunk['tool_calls'])}' toll call{'' if len(chunk['tool_calls']) == 1 else 's'}.")
             for i in range(len(chunk['tool_calls'])):
                 if self.parameters.log_chunks:
-                    self._logger.debug(f"Handling tool call '{i}'")
+                    self._logger.debug(f"Handling tool-call '{i}'")
                 if isinstance(chunk['tool_calls'][i].get('index'), int) and isinstance(chunk['tool_calls'][i].get('function'), dict):
                     if isinstance(chunk['tool_calls'][i].get('id'), str) and len(chunk['tool_calls'][i]['id']) > 0 and isinstance(chunk['tool_calls'][i]['function'].get('name'), str) and len(chunk['tool_calls'][i]['function']['name']) > 0:
                         if len(tool_calls) == chunk['tool_calls'][i]['index']:
                             if self.parameters.log_chunks:
-                                self._logger.debug(f"Appending new tool call with index '{chunk['tool_calls'][i]['index']}'")
+                                self._logger.debug(f"Appending new tool-call with index '{chunk['tool_calls'][i]['index']}'.")
                             tool_calls.append({'id': chunk['tool_calls'][i]['id'], 'name': chunk['tool_calls'][i]['function']['name'], 'arguments': ""})
                         else:
-                            raise AssertionError(f"Expected value of key 'index' in value of key 'tool_calls' to be '{len(tool_calls)}' instead of '{chunk['tool_calls'][i]['index']}'.")
+                            raise AssertionError(f"Expected value of key 'index' in value of key 'tool_calls' to be '{len(tool_calls)}' but got '{chunk['tool_calls'][i]['index']}'.")
                     if chunk['tool_calls'][i]['function'].get('arguments') not in ["", None]:
                         if chunk['tool_calls'][i]['index'] < len(tool_calls):
                             if self.parameters.log_chunks:
-                                self._logger.debug(f"Appending arguments to tool call with index '{chunk['tool_calls'][i]['index']}'")
+                                self._logger.debug(f"Appending arguments to tool-call with index '{chunk['tool_calls'][i]['index']}'.")
                             tool_calls[chunk['tool_calls'][i]['index']]['arguments'] += chunk['tool_calls'][i]['function']['arguments']
                         else:
-                            raise AssertionError(f"Expected value of key 'index' in value of key 'tool_calls' to be smaller '{len(tool_calls)}' instead of '{chunk['tool_calls'][i]['index']}'.")
+                            raise AssertionError(f"Expected value of key 'index' in value of key 'tool_calls' to be smaller '{len(tool_calls)}' but got '{chunk['tool_calls'][i]['index']}'.")
                 elif set(chunk['tool_calls'][i].keys()) == {'id', 'type', 'function'}:
-                    assert isinstance(chunk['tool_calls'][i]['id'], str) and len(chunk['tool_calls'][i]['id']) > 0, f"Expected value of key 'id' in value of key 'tool_calls' to be a non-empty string instead of '{chunk['tool_calls'][i]['id']}'."
-                    assert chunk['tool_calls'][i]['type'] == "function", f"Expected value of key 'id' in value of key 'tool_calls' to be 'function' instead of '{chunk['tool_calls'][i]['type']}'."
-                    assert isinstance(chunk['tool_calls'][i]['function'], dict), f"Expected value of key 'id' in value of key 'tool_calls' to be dictionary instead of '{chunk['tool_calls'][i]['function']}'."
-                    assert isinstance(chunk['tool_calls'][i]['function']['name'], str) and len(chunk['tool_calls'][i]['function']['name']) > 0, f"Expected value of key 'name' in value of key 'function' to be a non-empty string instead of '{chunk['tool_calls'][i]['function']['name']}'."
-                    assert isinstance(chunk['tool_calls'][i]['function']['arguments'], str), f"Expected value of key 'arguments' in value of key 'function' to be a non-empty string instead of '{chunk['tool_calls'][i]['function']['arguments']}'."
+                    assert isinstance(chunk['tool_calls'][i]['id'], str) and len(chunk['tool_calls'][i]['id']) > 0, f"Expected value of key 'id' in value of key 'tool_calls' to be a non-empty string but got '{chunk['tool_calls'][i]['id']}'."
+                    assert chunk['tool_calls'][i]['type'] == "function", f"Expected value of key 'id' in value of key 'tool_calls' to be 'function' but got '{chunk['tool_calls'][i]['type']}'."
+                    assert isinstance(chunk['tool_calls'][i]['function'], dict), f"Expected value of key 'id' in value of key 'tool_calls' to be dictionary but got '{chunk['tool_calls'][i]['function']}'."
+                    assert isinstance(chunk['tool_calls'][i]['function']['name'], str) and len(chunk['tool_calls'][i]['function']['name']) > 0, f"Expected value of key 'name' in value of key 'function' to be a non-empty string but got '{chunk['tool_calls'][i]['function']['name']}'."
+                    assert isinstance(chunk['tool_calls'][i]['function']['arguments'], str), f"Expected value of key 'arguments' in value of key 'function' to be a non-empty string but got '{chunk['tool_calls'][i]['function']['arguments']}'."
                     tool_calls.append({'id': chunk['tool_calls'][i]['id'], 'name': chunk['tool_calls'][i]['function']['name'], 'arguments': chunk['tool_calls'][i]['function']['arguments']})
                 else:
-                    raise AssertionError(f"Expected value of key 'tool_calls' to either contain the fields 'index' and 'function', or 'id', 'type' and 'function', instead of {list(chunk['tool_calls'][i].keys())}.")
+                    raise AssertionError(f"Expected value of key 'tool_calls' to either contain the fields 'index' and 'function', or 'id', 'type' and 'function', but got {list(chunk['tool_calls'][i].keys())}.")
 
         return reasoning, text, tool_calls
 

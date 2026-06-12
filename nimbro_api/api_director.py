@@ -58,6 +58,7 @@ class ApiDirector(ApiDirectorBase):
         """
         settings = update_dict(old_dict=default_settings, new_dict=settings)
         self._base = ApiDirectorBase(node=node, settings=settings)
+
     # ApiDirector Settings
 
     def get_settings(self):

@@ -3,7 +3,7 @@
 import sys
 import json
 
-from nimbro_utils.imports_lazy import extract_json
+from nimbro_utils.lazy import extract_json
 
 # This completion parser attempts to decode text completions as JSON objects.
 # It provides a pseudo-JSON mode that does not affect model inference, yet still ensures that a successful response is valid JSON.

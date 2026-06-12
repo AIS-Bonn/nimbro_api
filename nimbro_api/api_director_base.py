@@ -181,7 +181,7 @@ class ApiDirectorBase:
         for name in ['timeout_service', 'timeout_response']:
             assert_type_value(obj=settings[name], type_or_value=[float, int], name=f"setting '{name}'", logger=self._logger)
             if settings[name] < 0.0:
-                message = f"Expected settings '{name}' to be larger or equal zero but got '{settings[name]}'."
+                message = f"Expected setting '{name}' to be larger or equal zero but got '{settings[name]}'."
                 self._logger.error(message)
                 assert settings[name] > 0.0, message
 
@@ -779,11 +779,10 @@ class ApiDirectorBase:
         if instructions in self._settings['voice_presets']:
             if voice is None or voice == "":
                 self._logger.debug(f"{prefix} Using voice and instructions from preset '{instructions}'")
-                instructions = self._settings['voice_presets'][instructions]['instructions']
                 voice = self._settings['voice_presets'][instructions]['voice']
             else:
                 self._logger.debug(f"{prefix} Using instructions from preset '{instructions}'")
-                instructions = self._settings['voice_presets'][instructions]['instructions']
+            instructions = self._settings['voice_presets'][instructions]['instructions']
 
         request = request = SpeechGet.Request()
         request.text = text

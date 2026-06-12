@@ -1,4 +1,24 @@
 {
+    "gpt-5.2-chat-latest": {
+        "tokens_input_uncached": 1.75,
+        "tokens_input_cached": 0.175,
+        "tokens_output": 14.00
+    },
+    "gpt-5.2-2025-12-11": {
+        "tokens_input_uncached": 1.75,
+        "tokens_input_cached": 0.175,
+        "tokens_output": 14.00
+    },
+    "gpt-5.1-chat-latest": {
+        "tokens_input_uncached": 1.25,
+        "tokens_input_cached": 0.125,
+        "tokens_output": 10.00
+    },
+    "gpt-5.1-2025-11-13": {
+        "tokens_input_uncached": 1.25,
+        "tokens_input_cached": 0.125,
+        "tokens_output": 10.00
+    },
     "gpt-5-chat-latest": {
         "tokens_input_uncached": 1.25,
         "tokens_input_cached": 0.125,
@@ -135,19 +155,24 @@
         "tokens_input_uncached": 0.02
     },
 
+    "google/gemini-3-pro-preview": {
+        "tokens_input_uncached": 2.00,
+        "tokens_input_cached": 0.20,
+        "tokens_output": 12.00
+    },
     "google/gemini-2.5-pro": {
         "tokens_input_uncached": 1.25,
-        "tokens_input_cached": 0.31,
+        "tokens_input_cached": 0.125,
         "tokens_output": 10.00
     },
     "google/gemini-2.5-flash": {
         "tokens_input_uncached": 0.30,
-        "tokens_input_cached": 0.075,
+        "tokens_input_cached": 0.003,
         "tokens_output": 2.50
     },
     "google/gemini-2.5-flash-lite": {
         "tokens_input_uncached": 0.10,
-        "tokens_input_cached": 0.025,
+        "tokens_input_cached": 0.001,
         "tokens_output": 0.40
     },
     "google/gemini-2.0-flash-001": {
@@ -187,6 +212,10 @@
         "tokens_output": 0.08
     },
 
+    "anthropic/claude-opus-4.5": {
+        "tokens_input_uncached": 5.00,
+        "tokens_output": 25.00
+    },
     "anthropic/claude-opus-4.1": {
         "tokens_input_uncached": 15.00,
         "tokens_output": 75.00
@@ -236,6 +265,36 @@
         "tokens_output": 1.25
     },
 
+    "openai/gpt-5.2-chat": {
+        "tokens_input_uncached": 1.75,
+        "tokens_input_cached": 0.175,
+        "tokens_output": 14.00
+    },
+    "openai/gpt-5.2": {
+        "tokens_input_uncached": 1.75,
+        "tokens_input_cached": 0.175,
+        "tokens_output": 14.00
+    },
+    "openai/gpt-5.1-chat": {
+        "tokens_input_uncached": 1.25,
+        "tokens_input_cached": 0.125,
+        "tokens_output": 10.00
+    },
+    "openai/gpt-5.1": {
+        "tokens_input_uncached": 1.25,
+        "tokens_input_cached": 0.125,
+        "tokens_output": 10.00
+    },
+    "openai/gpt-5.1-codex": {
+        "tokens_input_uncached": 1.25,
+        "tokens_input_cached": 0.125,
+        "tokens_output": 10.00
+    },
+    "openai/gpt-5.1-codex-mini": {
+        "tokens_input_uncached": 0.25,
+        "tokens_input_cached": 0.025,
+        "tokens_output": 2.00
+    },
     "openai/gpt-5": {
         "tokens_input_uncached": 1.25,
         "tokens_input_cached": 0.125,
@@ -323,6 +382,11 @@
         "tokens_output": 1.20
     },
 
+    "x-ai/grok-4.1-fast": {
+        "tokens_input_uncached": 0.20,
+        "tokens_input_cached": 0.05,
+        "tokens_output": 0.50
+    },
     "x-ai/grok-4": {
         "tokens_input_uncached": 3.00,
         "tokens_input_cached": 0.75,
@@ -353,6 +417,30 @@
         "tokens_output": 10.00
     },
 
+    "qwen/qwen3.5-plus-02-15": {
+        "tokens_input_uncached": 0.26,
+        "tokens_output": 1.56
+    },
+    "qwen/qwen3.5-flash-02-23": {
+        "tokens_input_uncached": 0.10,
+        "tokens_output": 0.40
+    },
+    "qwen/qwen3.5-397b-a17b": {
+        "tokens_input_uncached": 0.39,
+        "tokens_output": 2.34
+    },
+    "qwen/qwen3.5-122b-a10b": {
+        "tokens_input_uncached": 0.26,
+        "tokens_output": 2.08
+    },
+    "qwen/qwen3.5-35b-a3b": {
+        "tokens_input_uncached": 0.1625,
+        "tokens_output": 1.30
+    },
+    "qwen/qwen3.5-27b": {
+        "tokens_input_uncached": 0.195,
+        "tokens_output": 1.56
+    },
     "qwen/qwen3-max": {
         "tokens_input_uncached": 1.20,
         "tokens_output": 6.00
@@ -442,15 +530,32 @@
         "tokens_input_uncached": 0.20,
         "tokens_output": 0.60
     },
+        "allenai/molmo-2-8b": {
+        "tokens_input_uncached": 0.20,
+        "tokens_output": 0.20
+    },
     "allenai/molmo-7b-d": {
         "tokens_input_uncached": 0.10,
         "tokens_output": 0.20
+    },
+    "moonshotai/kimi-k2.5": {
+        "tokens_input_uncached": 0.45,
+        "tokens_output": 2.20
+    },
+    "bytedance-seed/seed-2.0-mini": {
+        "tokens_input_uncached": 0.10,
+        "tokens_output": 0.40
     },
     "moonshotai/kimi-vl-a3b-thinking": {
         "tokens_input_uncached": 0.02,
         "tokens_output": 0.07
     },
 
+    "z-ai/glm-4.6v": {
+        "tokens_input_uncached": 0.30,
+        "tokens_input_cached": 0.10,
+        "tokens_output": 0.90
+    },
     "z-ai/glm-4.5v": {
         "tokens_input_uncached": 0.50,
         "tokens_input_cached": 0.10,
@@ -504,6 +609,14 @@
         "tokens_output": 0.10
     },
 
+    "mistral-large-latest": {
+        "tokens_input_uncached": 0.50,
+        "tokens_output": 1.50
+    },
+    "mistral-large-2512": {
+        "tokens_input_uncached": 0.50,
+        "tokens_output": 1.50
+    },
     "mistral-large-2411": {
         "tokens_input_uncached": 2.00,
         "tokens_output": 6.00
@@ -525,6 +638,10 @@
         "tokens_output": 0.30
     },
     "magistral-medium-latest": {
+        "tokens_input_uncached": 2.00,
+        "tokens_output": 5.00
+    },
+    "magistral-medium-2509": {
         "tokens_input_uncached": 2.00,
         "tokens_output": 5.00
     },
@@ -552,9 +669,41 @@
         "tokens_input_uncached": 0.40,
         "tokens_output": 2.00
     },
+    "devstral-small-latest": {
+        "tokens_input_uncached": 0.10,
+        "tokens_output": 0.30
+    },
+    "labs-devstral-small-2512": {
+        "tokens_input_uncached": 0.10,
+        "tokens_output": 0.30
+    },
     "devstral-small-2507": {
         "tokens_input_uncached": 0.10,
         "tokens_output": 0.30
+    },
+    "ministral-14b-latest": {
+        "tokens_input_uncached": 0.20,
+        "tokens_output": 0.20
+    },
+    "ministral-14b-2512": {
+        "tokens_input_uncached": 0.20,
+        "tokens_output": 0.20
+    },
+    "ministral-8b-latest": {
+        "tokens_input_uncached": 0.15,
+        "tokens_output": 0.15
+    },
+    "ministral-8b-2512": {
+        "tokens_input_uncached": 0.15,
+        "tokens_output": 0.15
+    },
+    "ministral-3b-latest": {
+        "tokens_input_uncached": 0.10,
+        "tokens_output": 0.10
+    },
+    "ministral-3b-2512": {
+        "tokens_input_uncached": 0.10,
+        "tokens_output": 0.10
     },
     "ministral-8b-2410": {
         "tokens_input_uncached": 0.10,

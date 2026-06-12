@@ -42,7 +42,7 @@ class CompletionsMultiplexer(Node):
 
         self._logger = Logger(self)
 
-        self.parameter_handler = ParameterHandler(self)
+        self.parameter_handler = ParameterHandler(self, {'log_init_as_debug': True})
 
         self.parameter_handler.declare(
             name="severity",

@@ -299,7 +299,7 @@ class Speech(Node):
             success, message, api_key = self.retrieve_api_key()
             if not success:
                 self._logger.error(message)
-                return False, message, None, None
+                return False, message, None
 
             # use API
             self._logger.debug(f"Retrieving speech from API (text='{text}', model='{model}', voice='{voice}', speed='{speed}', instructions='{instructions}')")

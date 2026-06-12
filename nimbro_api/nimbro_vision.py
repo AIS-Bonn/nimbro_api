@@ -35,11 +35,11 @@ api_endpoints = {
     'localhost': {
         'mmgroundingdino_url': "http://localhost:9000",
         'mmgroundingdino_key_type': "environment",
-        'mmgroundingdino_key_value': "NIMBRO_VISION_API_KEY",
+        'mmgroundingdino_key_value': "AIS_API_KEY",
 
         'sam2_realtime_url': "http://localhost:9001",
         'sam2_realtime_key_type': "environment",
-        'sam2_realtime_key_value': "NIMBRO_VISION_API_KEY",
+        'sam2_realtime_key_value': "AIS_API_KEY",
 
         'dam_url': "http://localhost:9002",
         'dam_key_type': "environment",
@@ -56,11 +56,11 @@ api_endpoints = {
     'AIS': {
         'mmgroundingdino_url': "https://api-code.ais.uni-bonn.de/v1/vision/mmgroundingdino",
         'mmgroundingdino_key_type': "environment",
-        'mmgroundingdino_key_value': "NIMBRO_VISION_API_KEY",
+        'mmgroundingdino_key_value': "AIS_API_KEY",
 
         'sam2_realtime_url': "https://api-code.ais.uni-bonn.de/v1/vision/sam2_realtime",
         'sam2_realtime_key_type': "environment",
-        'sam2_realtime_key_value': "NIMBRO_VISION_API_KEY",
+        'sam2_realtime_key_value': "AIS_API_KEY",
 
         'dam_url': "https://api-code.ais.uni-bonn.de/v1/vision/dam",
         'dam_key_type': "environment",
