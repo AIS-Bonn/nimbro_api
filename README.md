@@ -2,6 +2,10 @@
 
 Integration of various APIs with the [ROS2 Jazzy](https://docs.ros.org/en/jazzy/index.html) distribution.
 
+> [!WARNING]
+> **This project is no longer actively maintained.**
+> It has been succeeded by the PyPI package [`nimbro-api`](https://pypi.org/project/nimbro-api/), which does not depend on ROS.
+
 ## Features
 
 - Supported APIs: [Chat Completions](https://platform.openai.com/docs/api-reference/chat), [Embeddings](https://platform.openai.com/docs/api-reference/embeddings), [Speech](https://platform.openai.com/docs/api-reference/audio/createSpeech), [Transcriptions](https://platform.openai.com/docs/api-reference/audio/createTranscription), [Translations](https://platform.openai.com/docs/api-reference/audio/createTranslation), [Images](https://platform.openai.com/docs/api-reference/images), [NimbRo Vision Servers](https://github.com/AIS-Bonn/nimbro_vision_servers).
@@ -83,15 +87,6 @@ success, message, completion = self.api_director.prompt(
     text='Tell me a joke about robots!'
 )
 ```
-
-## TODOs
-
-Features that I would like to see implemented:<br>
-- [ ] Action client for streamed Chat Completions<br>
-- [ ] Context parsers for Chat Completions<br>
-- [ ] Audio/Vision output for Chat Completions<br>
-- [ ] Structured outputs beyond tools for Chat Completions<br>
-- [ ] Configurable random seed for Chat Completions<br>
 
 ## Citation
 
